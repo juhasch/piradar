@@ -1,0 +1,235 @@
+# Client Plotting Configuration
+
+This guide describes how to configure the client-side plotting tools using YAML files. These configurations control how the live plotting scripts connect to the radar publisher over ZeroMQ and how data is visualized.
+
+## Overview
+
+Client configs are validated with Pydantic and loaded from YAML. Each plotting script expects a config tailored to its view (range, range–Doppler, time-domain, velocity waterfall, polar).
+
+- Files live anywhere; pass the path via `--config`.
+- Common sections:
+  - `zmq`: Connection parameters to the radar publisher
+  - `plot`: Display options (windowing, dynamic range, colormap, bins)
+  - View-specific options (e.g., `peak_finding`, `average`, `history`)
+
+## ZMQ Connection
+
+```yaml
+zmq:
+  host: "radarpi"       # Publisher host/IP
+  data_port: 5555        # Data PUB port
+  command_port: 5556     # Command REQ/REP port
+  status_port: 5557      # Status PUB port
+  max_drain: 50          # Frames to drain per UI cycle
+```
+
+## Plot Display Options
+
+```yaml
+plot:
+  window: "hamming"      # hamming | hanning | blackman | none
+  db_min: 20.0           # y-axis lower bound in dB
+  db_max: 100.0          # y-axis upper bound in dB
+  colormap: "viridis"   # Matplotlib colormap name
+  range_bins: null       # Override range bins (null = auto)
+  doppler_bins: null     # Override Doppler bins (null = auto)
+```
+
+## Range Profile (Frequency Domain)
+
+Script: `examples/client/plot_range.py`
+
+Run:
+
+```bash
+python examples/client/plot_range.py --config examples/client/range.yaml
+```
+
+Config example:
+
+```yaml
+zmq:
+  host: "radarpi"
+  data_port: 5555
+  command_port: 5556
+  status_port: 5557
+  max_drain: 50
+
+plot:
+  window: "hamming"
+  db_min: 20.0
+  db_max: 100.0
+  colormap: "viridis"
+  range_bins: null
+  doppler_bins: null
+
+chirp_index: -1                 # -1 averages across chirps
+show_individual_channels: true  # show RX0/RX1/RX2 debug traces
+integration_method: "coherent" # coherent | non-coherent
+
+peak_finding:
+  enabled: true
+  min_range_cm: 5.0
+  threshold: 0.1
+  ignore_range_0: true
+```
+
+### Peak Finding
+
+Fields under `peak_finding` control the red cross overlay:
+
+- `enabled`: turn on/off detection
+- `min_range_cm`: ignore near-field/self-coupling
+- `threshold`: minimum normalized amplitude
+- `ignore_range_0`: discard the DC/self-coupled bin
+
+## Time-Domain View
+
+Script: `examples/client/plot_time_domain.py`
+
+Run:
+
+```bash
+python examples/client/plot_time_domain.py --config examples/client/time_domain.yaml
+```
+
+Config example:
+
+```yaml
+zmq:
+  host: "radarpi"
+  data_port: 5555
+  command_port: 5556
+  status_port: 5557
+  max_drain: 50
+
+average: true                 # average across chirps instead of single chirp
+chirp_index: -1               # -1 = last chirp when average=false
+suppress_static: true         # enable clutter suppression
+suppress_alpha: 0.995         # EWMA alpha in [0.0, 1.0)
+ylim: null                    # [ymin, ymax] or null for auto-scale
+```
+
+Validation constraints:
+
+- `suppress_alpha` must be in [0.0, 1.0)
+- `ylim` must be a two-element list `[ymin, ymax]` with `ymin < ymax` when set
+
+## Velocity Waterfall
+
+Script: `examples/client/plot_velocity_waterfall.py`
+
+Key options:
+
+```yaml
+history: 200                 # rows of history
+positive_ranges_only: false  # use only positive range half
+suppress_static: false       # static clutter suppression
+suppress_alpha: 0.995        # EWMA alpha if suppression enabled
+```
+
+## Polar and Range–Doppler Views
+
+Scripts:
+
+- Polar: `examples/client/plot_polar.py`
+- Range–Angle (dual): `examples/client/plot_rd_angle_dual.py`
+- Range–Doppler: `examples/client/plot_range_doppler.py`
+
+Range–Doppler specific option:
+
+```yaml
+angle_range: [-3.1416, 3.1416]   # radians, set null for auto-scale
+```
+
+## Multi-Radar Configuration
+
+Use `MultiRadarConfig` when coordinating multiple publishers from the same client. Create a YAML file like [`examples/client/multi_radar_range_doppler.yaml`](examples/client/multi_radar_range_doppler.yaml):
+
+```yaml
+radars:
+  - name: front_left
+    zmq:
+      host: "radarpi-left"
+      data_port: 5601
+    calibration:
+      range_offset_cm: 2.0
+      doppler_offset_mps: 0.05
+    color: "#ff6b6b"
+    metadata:
+      mounting: "left"
+  - name: front_right
+    zmq:
+      host: "radarpi-right"
+      data_port: 5602
+
+tolerance_ns: 5000000      # alignment window (nanoseconds)
+
+fusion:
+  method: "stack"          # per_radar | stack | average
+
+range_doppler_defaults:
+  plot:
+    window: "hamming"
+    db_min: 20.0
+    db_max: 100.0
+```
+
+- `radars`: List of `RadarInstanceConfig`, each with its own `ZMQConfig`, calibration offsets, and metadata.
+- `tolerance_ns`: Maximum timestamp delta for alignment (defaults to 5 ms).
+- `fusion`: `MultiRadarFusionConfig` specifying how aligned frames are combined.
+- `range_doppler_defaults`: Optional shared `RangeDopplerConfig` reused by sample scripts.
+
+Load the config with:
+
+```python
+from piradar.client.config import MultiRadarConfig, load_config
+
+multi_cfg = load_config("examples/client/multi_radar_range_doppler.yaml", MultiRadarConfig)
+for radar in multi_cfg.enabled_radars:
+    print(radar.name, radar.zmq.host)
+```
+
+## Antenna Calibration Plotting
+
+Used by `examples/client/plot_antenna_calibration.py` with `examples/client/antenna_plotting_config.yaml`:
+
+```yaml
+amplitude_log_scale: true
+amplitude_db_range: 40
+show_phase_differences: true
+show_rx1_rx2_phase_diff: true
+show_individual_receivers: true
+show_combined_plots: false
+plot_style: "default"
+figure_size: [15, 10]
+dpi: 300
+grid_alpha: 0.3
+line_width: 2
+marker_size: 4
+elevation_color: "red"
+azimuth_color: "blue"
+rx1_rx2_color: "green"
+receiver_colors: ["#1f77b4", "#ff7f0e", "#2ca02c"]
+calculate_beamwidth: true
+calculate_phase_range: true
+print_statistics: true
+auto_save: true
+output_format: "png"
+output_suffix: "_analysis"
+```
+
+## Tips
+
+- Ensure the radar publisher is running and reachable at `zmq.host`.
+- Match `db_min/db_max` to your expected dynamic range to avoid clipped plots.
+- Set `chirp_index = -1` to aggregate across chirps when supported.
+- For coherent integration, ensure phase alignment is desirable for your scene.
+
+## Related
+
+- Radar configuration (hardware parameters): see [Configuration](configuration)
+- ZMQ protocol: see [ZeroMQ Communication](zmq-communication)
+- Example scripts: see [Examples](examples)
+
+

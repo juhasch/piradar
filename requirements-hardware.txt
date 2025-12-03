@@ -1,0 +1,17 @@
+# Hardware dependencies for PiRadar on Raspberry Pi
+# Install with: pip install -r requirements-hardware.txt
+
+# Core dependencies
+numpy
+numba
+pydantic
+pyzmq
+tqdm
+pyyaml
+h5py
+psutil
+
+# Hardware-specific dependencies
+spidev>=3.6
+gpiod>=2.0
+smbus2

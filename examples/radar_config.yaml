@@ -1,0 +1,18 @@
+# Sample radar configuration for BGT60TR13C
+# This file contains all the required parameters for radar operation
+
+# Frequency settings (in Hz)
+# Must be between 58.0 GHz and 63.5 GHz
+start_frequency_Hz: 58500000000  # 58.5 GHz
+stop_frequency_Hz: 62500000000   # 62.5 GHz
+
+# Chirp timing (in seconds)
+chirp_duration_s: 100e-6  # 100 microseconds
+
+# Frame configuration
+frame_length: 32           # Number of chirps per frame
+frame_duration_s: 0.04     # 40 milliseconds total frame duration
+
+# Power and sampling
+output_power: 15           # TX power level (0-31)
+adc_sample_rate_Hz: 2000000  # 2 MHz ADC sample rate

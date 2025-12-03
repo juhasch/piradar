@@ -1,0 +1,432 @@
+# Direct Register Control
+
+This chapter demonstrates direct manipulation of radar chip registers for advanced users.
+
+## Overview
+
+Direct register control provides the lowest level of access to the BGT60TR13C radar chip. This is useful for:
+
+- **Custom configurations** not covered by high-level API
+- **Hardware debugging** and experimentation
+- **Performance optimization** through fine-tuning
+- **Research applications** requiring precise control
+
+::: {.callout-warning}
+## Advanced Feature
+Direct register manipulation can potentially misconfigure the radar. Always verify changes against the BGT60TR13C datasheet.
+:::
+
+## Register Access Methods
+
+### Method 1: Direct SPI Access
+
+Direct register read/write via SPI:
+
+```python
+from piradar.hw import BGT60TR13C
+
+with BGT60TR13C() as radar:
+    # Read register (24-bit value)
+    chip_id = radar.read_register(0x02)
+    print(f"Chip ID: 0x{chip_id:06X}")
+    
+    # Write register
+    radar.write_register(0x00, 0x1E0001)  # Start frame
+    
+    # Burst read multiple registers
+    registers = [0x02, 0x03, 0x5D]
+    values = [radar.read_register(addr) for addr in registers]
+```
+
+### Method 2: RegisterMap Class
+
+Field-level access with symbolic names:
+
+```python
+from piradar.registermap import RegisterMap
+
+# Load register map
+regmap = RegisterMap("piradar/bgt60tr13c_registermap.yaml")
+
+# Read register by name
+chip_id = regmap.read_register("CHIP_ID")
+print(f"Chip ID: 0x{chip_id:06X}")
+
+# Read specific field
+digital_id = regmap.read_field("CHIP_ID", "DIGITAL_ID")
+rf_id = regmap.read_field("CHIP_ID", "RF_ID")
+print(f"Digital ID: 0x{digital_id:04X}, RF ID: 0x{rf_id:02X}")
+
+# Write field
+regmap.write_field("CSI_1", "TX_DAC", 25)
+```
+
+### Method 3: Memory-Backed (Simulation)
+
+For testing without hardware:
+
+```python
+from piradar.registermap import RegisterMap
+
+# Create memory-backed register map
+regmap = RegisterMap(
+    "piradar/bgt60tr13c_registermap.yaml",
+    memory_interface=True  # No hardware required
+)
+
+# All operations work in memory
+regmap.write_field("CSI_1", "TX_DAC", 25)
+value = regmap.read_field("CSI_1", "TX_DAC")
+print(f"TX Power: {value}")
+```
+
+## Common Register Manipulations
+
+### Configuring TX Power
+
+```python
+# Set TX power (0 = min, 31 = max)
+regmap.write_field("CSI_1", "TX_DAC", 31)
+
+# Read current power
+power = regmap.read_field("CSI_1", "TX_DAC")
+print(f"TX Power: {power}/31")
+```
+
+### Enabling/Disabling Channels
+
+```python
+# Enable all RX channels
+regmap.write_field("CSI_0", "RX1MIX_EN", 1)
+regmap.write_field("CSI_0", "RX2MIX_EN", 1)
+regmap.write_field("CSI_0", "RX3MIX_EN", 1)
+
+# Enable RX local oscillator buffers
+regmap.write_field("CSI_0", "RX1LOBUF_EN", 1)
+regmap.write_field("CSI_0", "RX2LOBUF_EN", 1)
+regmap.write_field("CSI_0", "RX3LOBUF_EN", 1)
+
+# Enable TX
+regmap.write_field("CSI_0", "TX_EN", 1)
+```
+
+### ADC Configuration
+
+```python
+# Set ADC sampling divider (determines sample rate)
+# f_ADC_SAMP = f_ADC_CLK / ADC_DIV
+# Example: 80 MHz / 33 ≈ 2.42 Msps
+regmap.write_field("ADC0", "ADC_DIV", 33)
+
+# Configure sample time control
+regmap.write_field("ADC0", "STC", 1)  # 100 ns
+
+# Set tracking configuration
+regmap.write_field("ADC0", "TRACK_CFG", 1)  # 1 sub-conversion
+```
+
+### FIFO Control
+
+```python
+# Reset FIFO
+regmap.write_field("MAIN", "FIFO_RESET", 1)
+
+# Set FIFO compare reference (for interrupts)
+regmap.write_field("SFCTL", "FIFO_CREF", 1024)
+
+# Enable FIFO prefix data header
+regmap.write_field("SFCTL", "PREFIX_EN", 1)
+
+# Read FIFO status
+fill_status = regmap.read_field("FSTAT", "FILL_STATUS")
+empty = regmap.read_field("FSTAT", "EMPTY")
+full = regmap.read_field("FSTAT", "FULL")
+
+print(f"FIFO: fill={fill_status}, empty={empty}, full={full}")
+```
+
+## Chirp Configuration
+
+### Simple Saw-Tooth Chirp
+
+```python
+# Configure Shape 1 as saw-tooth (up-chirp only)
+
+# 1. Set start frequency
+# FSU1 value for 58 GHz (consult datasheet for calculation)
+regmap.write_field("PLL1_0", "FSU1", 0x000000)
+
+# 2. Set ramp slope
+# RSU1 value for desired bandwidth (e.g., 5 GHz over 500 μs)
+regmap.write_field("PLL1_1", "RSU1", 0x051EB8)
+
+# 3. Set ramp time
+# RTU1 = 500 μs / (8 × 12.5 ns) = 5000
+regmap.write_field("PLL1_2", "RTU1", 5000)
+
+# 4. Set acquisition points (number of samples)
+regmap.write_field("PLL1_3", "APU1", 128)  # 128 samples per chirp
+regmap.write_field("PLL1_3", "APD1", 0)    # No down-chirp samples
+
+# 5. Set down-chirp parameters to 0 (saw-tooth mode)
+regmap.write_field("PLL1_4", "FSD1", 0)
+regmap.write_field("PLL1_5", "RSD1", 0)
+regmap.write_field("PLL1_6", "RTD1", 0)
+
+# 6. Enable shape
+regmap.write_field("PLL1_7", "SH_EN", 1)
+regmap.write_field("PLL1_7", "REPS", 0)  # 1 repetition (2^0)
+```
+
+### Triangular Chirp
+
+```python
+# Configure Shape 1 as triangular (up and down chirp)
+
+# Up-chirp configuration
+regmap.write_field("PLL1_0", "FSU1", 0x000000)  # Start freq
+regmap.write_field("PLL1_1", "RSU1", 0x051EB8)  # Slope up
+regmap.write_field("PLL1_2", "RTU1", 5000)      # Time up
+regmap.write_field("PLL1_3", "APU1", 128)       # Samples up
+
+# Down-chirp configuration  
+regmap.write_field("PLL1_4", "FSD1", 0x0A3D70)  # Start freq (at end of up)
+regmap.write_field("PLL1_5", "RSD1", 0x851EB8)  # Slope down (negative)
+regmap.write_field("PLL1_6", "RTD1", 5000)      # Time down
+regmap.write_field("PLL1_3", "APD1", 128)       # Samples down
+
+# Enable shape
+regmap.write_field("PLL1_7", "SH_EN", 1)
+```
+
+## Frame Configuration
+
+### Basic Frame Setup
+
+```python
+# Set frame parameters
+regmap.write_field("CCR2", "FRAME_LEN", 63)      # 64 chirps (0-indexed)
+regmap.write_field("CCR2", "MAX_FRAME_CNT", 0)   # Endless generation
+
+# Set frame end delay
+regmap.write_field("CCR1", "TR_FED", 100)        # Frame end delay coeff
+regmap.write_field("CCR1", "TR_FED_MUL", 2)      # Multiplier
+
+# Enable continuous mode
+regmap.write_field("CCR0", "CONT_MODE", 1)
+
+# Set power down mode between frames
+regmap.write_field("CCR1", "PD_MODE", 1)         # Idle mode
+```
+
+## Power Management
+
+### Power Modes
+
+```python
+# Deep Sleep Mode
+regmap.write_field("CCR1", "PD_MODE", 2)  # Deep sleep between frames
+
+# Idle Mode
+regmap.write_field("CCR1", "PD_MODE", 1)  # Idle between frames
+
+# Active Mode
+regmap.write_field("CCR1", "PD_MODE", 0)  # Stay active
+```
+
+### Wake-Up Timing
+
+```python
+# Configure wake-up time
+# T_WU = (TR_WKUP × 2^TR_WKUP_MUL × 8 + TR_WKUP_MUL + 3) × T_SYS_CLK
+# Example: 1 ms wake-up time
+
+regmap.write_field("MAIN", "TR_WKUP", 100)
+regmap.write_field("MAIN", "TR_WKUP_MUL", 3)
+```
+
+## Reading Status
+
+### Chip Status
+
+```python
+# Read power mode status
+pm = regmap.read_field("STAT0", "PM")
+pm_names = {1: "Active", 2: "Interchirp", 3: "Idle", 5: "Deep Sleep"}
+print(f"Power Mode: {pm_names.get(pm, 'Unknown')}")
+
+# Check if components are ready
+ldo_rdy = regmap.read_field("STAT0", "LDO_RDY")
+madc_rdy = regmap.read_field("STAT0", "MADC_RDY")
+sadc_rdy = regmap.read_field("STAT0", "SADC_RDY")
+
+print(f"LDO Ready: {ldo_rdy}")
+print(f"MADC Ready: {madc_rdy}")
+print(f"SADC Ready: {sadc_rdy}")
+```
+
+### Frame Counters
+
+```python
+# Read frame and shape counters
+frame_cnt = regmap.read_field("STAT1", "FRAME_CNT")
+shape_cnt = regmap.read_field("STAT1", "SHAPE_GRP_CNT")
+
+print(f"Frame Count: {frame_cnt}")
+print(f"Shape Group Count: {shape_cnt}")
+```
+
+### FIFO Status
+
+```python
+# Read FIFO status
+full = regmap.read_field("FSTAT", "FULL")
+empty = regmap.read_field("FSTAT", "EMPTY")
+fill = regmap.read_field("FSTAT", "FILL_STATUS")
+overflow = regmap.read_field("FSTAT", "FOF_ERR")
+underflow = regmap.read_field("FSTAT", "FUF_ERR")
+
+print(f"FIFO Status:")
+print(f"  Full: {full}, Empty: {empty}")
+print(f"  Fill Level: {fill}/8192")
+print(f"  Overflow Error: {overflow}")
+print(f"  Underflow Error: {underflow}")
+```
+
+## Advanced Techniques
+
+### Change Tracking
+
+```python
+from piradar.registermap import RegisterMap
+
+regmap = RegisterMap("piradar/bgt60tr13c_registermap.yaml")
+
+# Enable change tracking
+regmap.track_changes = True
+
+# Make changes
+regmap.write_field("CSI_1", "TX_DAC", 25)
+regmap.write_field("CSI_2", "VGA_GAIN1", 3)
+
+# Get change history
+changes = regmap.get_change_history()
+for change in changes:
+    print(f"{change['timestamp']}: "
+          f"{change['register']}.{change['field']} = "
+          f"{change['value']} (was {change['old_value']})")
+```
+
+### Batch Operations
+
+```python
+# Save current state
+state = regmap.export_state()
+
+# Make temporary changes
+regmap.write_field("CSI_1", "TX_DAC", 15)
+regmap.write_field("CSI_2", "VGA_GAIN1", 5)
+
+# Restore previous state
+regmap.import_state(state)
+```
+
+### Register Dumping
+
+```python
+# Dump all registers to file
+import json
+
+state = {}
+for reg_name in regmap.registers.keys():
+    try:
+        value = regmap.read_register(reg_name)
+        state[reg_name] = value
+    except:
+        pass
+
+with open("register_dump.json", "w") as f:
+    json.dump(state, f, indent=2)
+```
+
+## Safety Checks
+
+### Verify Write Operations
+
+```python
+def safe_write_field(regmap, register, field, value):
+    """Write with verification"""
+    # Write
+    regmap.write_field(register, field, value)
+    
+    # Read back
+    readback = regmap.read_field(register, field)
+    
+    # Verify
+    if readback != value:
+        raise RuntimeError(
+            f"Write verification failed: "
+            f"wrote {value}, read {readback}"
+        )
+    
+    print(f"✓ {register}.{field} = {value}")
+
+# Use safe write
+safe_write_field(regmap, "CSI_1", "TX_DAC", 25)
+```
+
+### Range Checking
+
+```python
+def write_field_with_check(regmap, register, field, value):
+    """Write with range checking"""
+    # Get field info
+    field_info = regmap.get_field_info(register, field)
+    
+    # Calculate max value from bit width
+    bits = field_info['bits']
+    if isinstance(bits, int):
+        max_value = 1
+    else:
+        bit_range = bits.split(':')
+        width = int(bit_range[0]) - int(bit_range[1]) + 1
+        max_value = (1 << width) - 1
+    
+    # Check range
+    if value < 0 or value > max_value:
+        raise ValueError(
+            f"Value {value} out of range [0, {max_value}] "
+            f"for {register}.{field}"
+        )
+    
+    # Write
+    regmap.write_field(register, field, value)
+
+# Use with check
+write_field_with_check(regmap, "CSI_1", "TX_DAC", 25)
+```
+
+## Debugging
+
+### Enable Debug Logging
+
+```python
+import logging
+
+# Enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Now all register operations will be logged
+regmap.write_field("CSI_1", "TX_DAC", 25)
+# DEBUG: Writing CSI_1.TX_DAC = 25 (0x19)
+# DEBUG: Register CSI_1 = 0x190000
+# DEBUG: SPI write: addr=0x09, data=0x190000
+```
+
+## See Also
+
+- [Register Map](register-map) - Complete register reference
+- [Configuration](configuration) - High-level configuration API
+- [Adaptive Radar](adaptive-radar) - AI/ML integration
+- [Hardware Specifications](hardware-specs) - Hardware details
+

@@ -1,0 +1,16 @@
+zmq:
+  host: "radarpi"
+  max_drain: 5
+
+plot:
+  window: "hamming"
+  db_min: 40.0
+  db_max: 80.0
+  colormap: "viridis"
+  range_bins: null
+  doppler_bins: null
+
+history: 200
+positive_ranges_only: false
+suppress_static: true
+suppress_alpha: 0.1

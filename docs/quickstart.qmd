@@ -1,0 +1,235 @@
+# Quick Start
+
+This guide will help you get started with PiRadar quickly.
+
+## Verify Hardware Connection
+
+First, verify that the radar chip is detected:
+
+```bash
+piradar check-id
+```
+
+Expected output:
+```
+Chip ID: 0x0303
+Digital ID: 0x0003 (BGT60TR13C)
+RF ID: 0x03 (1Tx, 3Rx)
+```
+
+## Monitor Live Frames
+
+Monitor radar data in real-time (30 seconds by default):
+
+```bash
+piradar monitor
+```
+
+With custom duration:
+```bash
+piradar monitor --duration 60
+```
+
+With custom configuration:
+```bash
+piradar monitor --config radar_config.yaml --duration 30
+```
+
+## Record Data to File
+
+### Save as NumPy Array
+
+```bash
+piradar record --frames 100 --output radar.npy --format npy
+```
+
+### Save as HDF5
+
+```bash
+piradar record --frames 100 --output radar.h5 --format h5
+```
+
+### Include Metadata
+
+```bash
+piradar record --frames 100 --output radar.npy --metadata
+```
+
+## Stream Data via ZeroMQ
+
+### Start a ZMQ Publisher
+
+```bash
+piradar publish --port 5555
+```
+
+This starts three services:
+- Data publisher on port 5555
+- Command handler on port 5556
+- Status publisher on port 5557
+
+### Connect as a ZMQ Client
+
+In a separate terminal or on another machine:
+
+```bash
+piradar zmq-client --host localhost --data-port 5555
+```
+
+Interactive mode with command support:
+```bash
+piradar zmq-client --interactive
+```
+
+## Python API Example
+
+### Basic Data Collection
+
+```python
+from piradar.hw import BGT60TR13C
+import numpy as np
+
+# Initialize radar with context manager
+with BGT60TR13C() as radar:
+    # Configure with default settings
+    radar.configure()
+    
+    # Set FIFO parameters
+    radar.set_fifo_parameters(1024, 512, 256)
+    
+    # Start data collection
+    radar.start()
+    
+    # Collect 100 frames
+    frames = []
+    for i in range(100):
+        frame = radar.frame_buffer.get(timeout=5.0)
+        frames.append(frame)
+        print(f"Frame {i+1}: shape={frame.shape}, dtype={frame.dtype}")
+    
+    # Stop radar
+    radar.stop()
+
+# Save collected data
+frames_array = np.array(frames)
+np.save('radar_data.npy', frames_array)
+print(f"Saved {len(frames)} frames")
+```
+
+### Using Custom Configuration
+
+```python
+from piradar.hw import BGT60TR13C
+from piradar.config import RadarConfig
+
+# Load configuration from YAML
+config = RadarConfig.read_yaml("radar_config.yaml")
+
+with BGT60TR13C() as radar:
+    # Apply custom configuration
+    radar.configure(config)
+    radar.start()
+    
+    # Collect data
+    frame = radar.frame_buffer.get(timeout=5.0)
+    print(f"Received frame: {frame.shape}")
+```
+
+### Create Configuration Programmatically
+
+```python
+from piradar.config import RadarConfig
+
+# Create configuration
+config = RadarConfig(
+    start_frequency_Hz=58_000_000_000,  # 58 GHz
+    stop_frequency_Hz=63_000_000_000,   # 63 GHz
+    chirp_duration_s=0.0005,            # 500 μs
+    frame_length=64,                     # 64 chirps per frame
+    frame_duration_s=0.1,                # 10 FPS
+    output_power=31,                     # Maximum power
+    adc_sample_rate_Hz=2_000_000        # 2 MHz
+)
+
+# Save to YAML
+with open("my_config.yaml", "w") as f:
+    f.write(config.model_dump_yaml())
+```
+
+## ZeroMQ Streaming Example
+
+### Server Side (Raspberry Pi)
+
+```python
+import asyncio
+from piradar.hw import AsyncZMQHandler
+from piradar.hw import BGT60TR13C
+
+async def stream_radar_data():
+    # Create ZMQ handler
+    handler = AsyncZMQHandler(
+        data_port=5555,
+        command_port=5556,
+        status_port=5557
+    )
+    
+    # Start command listener
+    asyncio.create_task(handler.start_command_listener())
+    
+    # Initialize radar
+    with BGT60TR13C() as radar:
+        radar.configure()
+        radar.start()
+        
+        # Stream frames
+        frame_id = 0
+        while True:
+            frame = radar.frame_buffer.get(timeout=5.0)
+            await handler.publish_frame(frame, {
+                "frame_id": frame_id,
+                "timestamp": time.time()
+            })
+            frame_id += 1
+            
+            # Publish status periodically
+            if frame_id % 10 == 0:
+                await handler.publish_status(f"streaming (frame {frame_id})")
+
+asyncio.run(stream_radar_data())
+```
+
+### Client Side (Any Machine)
+
+```python
+import asyncio
+from piradar.hw import AsyncZMQClient
+
+async def receive_radar_data():
+    # Create ZMQ client
+    client = AsyncZMQClient(
+        data_port=5555,
+        command_port=5556,
+        status_port=5557,
+        host="raspberrypi.local"  # or IP address
+    )
+    
+    # Receive frames
+    for _ in range(100):
+        frame = await client.receive_frame(timeout=5.0)
+        if frame:
+            print(f"Frame {frame.frame_id}: shape={frame.data.shape}")
+    
+    # Clean up
+    await client.close()
+
+asyncio.run(receive_radar_data())
+```
+
+## Next Steps
+
+- Learn about [Hardware Specifications](hardware-overview)
+- Explore [Configuration Options](configuration)
+- See [More Examples](examples)
+- Understand [Network Data Format](network-format)
+- Read about [Register-Level Control](register-map)
+

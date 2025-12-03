@@ -1,0 +1,631 @@
+# Python API Reference
+
+Complete reference for the PiRadar Python API.
+
+## Core Classes
+
+### BGT60TR13C
+
+Main radar interface class.
+
+```python
+from piradar.hw import BGT60TR13C
+```
+
+#### Constructor
+
+```python
+BGT60TR13C(
+    spi_bus=0,           # SPI bus number
+    spi_device=0,        # SPI device number
+    spi_speed=25000000,  # SPI clock speed (Hz)
+    rst_pin=12,          # Reset GPIO pin (BCM)
+    irq_pin=25           # Interrupt GPIO pin (BCM)
+)
+```
+
+#### Context Manager
+
+```python
+with BGT60TR13C() as radar:
+    radar.configure()
+    radar.start()
+    # ... use radar
+    radar.stop()
+# Automatic cleanup
+```
+
+#### Methods
+
+**configure(config=None)**
+
+Configure the radar with parameters.
+
+```python
+# Use default configuration
+radar.configure()
+
+# Use custom configuration
+from piradar.config import RadarConfig
+config = RadarConfig.read_yaml("radar_config.yaml")
+radar.configure(config)
+```
+
+**start()**
+
+Start radar data collection.
+
+```python
+radar.start()
+```
+
+**stop()**
+
+Stop radar data collection.
+
+```python
+radar.stop()
+```
+
+**read_register(address)**
+
+Read a 24-bit register.
+
+```python
+chip_id = radar.read_register(0x02)
+print(f"Chip ID: 0x{chip_id:06X}")
+```
+
+**write_register(address, value)**
+
+Write a 24-bit register.
+
+```python
+radar.write_register(0x00, 0x1E0001)
+```
+
+**set_fifo_parameters(threshold, watermark, size)**
+
+Configure FIFO parameters.
+
+```python
+radar.set_fifo_parameters(
+    threshold=1024,  # Interrupt threshold
+    watermark=512,   # Warning level
+    size=256         # Read size
+)
+```
+
+#### Properties
+
+**frame_buffer**
+
+Queue for received frames.
+
+```python
+# Get frame (blocks until available)
+frame = radar.frame_buffer.get(timeout=5.0)
+
+# Get frame without blocking
+try:
+    frame = radar.frame_buffer.get_nowait()
+except queue.Empty:
+    print("No frame available")
+
+# Check queue size
+num_frames = radar.frame_buffer.qsize()
+```
+
+**is_running**
+
+Check if radar is running.
+
+```python
+if radar.is_running:
+    print("Radar is collecting data")
+```
+
+## Configuration
+
+### RadarConfig
+
+Configuration dataclass with validation.
+
+```python
+from piradar.config import RadarConfig
+```
+
+#### Constructor
+
+```python
+config = RadarConfig(
+    start_frequency_Hz=58_000_000_000,
+    stop_frequency_Hz=63_000_000_000,
+    chirp_duration_s=0.0005,
+    frame_length=64,
+    frame_duration_s=0.1,
+    output_power=31,
+    adc_sample_rate_Hz=2_000_000
+)
+```
+
+#### Class Methods
+
+**read_yaml(filename)**
+
+Load configuration from YAML file.
+
+```python
+config = RadarConfig.read_yaml("radar_config.yaml")
+```
+
+**read_json(filename)**
+
+Load configuration from JSON file.
+
+```python
+config = RadarConfig.read_json("radar_config.json")
+```
+
+**read_txt(filename)**
+
+Load configuration from Infineon text format.
+
+```python
+config = RadarConfig.read_txt("radar_config.txt")
+```
+
+#### Methods
+
+**model_dump_yaml()**
+
+Export configuration as YAML string.
+
+```python
+yaml_str = config.model_dump_yaml()
+with open("output.yaml", "w") as f:
+    f.write(yaml_str)
+```
+
+**model_dump_json()**
+
+Export configuration as JSON string.
+
+```python
+json_str = config.model_dump_json(indent=2)
+```
+
+## Register Map
+
+### RegisterMap
+
+Low-level register access.
+
+```python
+from piradar.registermap import RegisterMap
+```
+
+#### Constructor
+
+```python
+# Hardware-backed (requires radar)
+regmap = RegisterMap("piradar/bgt60tr13c_registermap.yaml")
+
+# Memory-backed (simulation)
+regmap = RegisterMap(
+    "piradar/bgt60tr13c_registermap.yaml",
+    memory_interface=True
+)
+```
+
+#### Methods
+
+**read_register(register_name)**
+
+Read register by name.
+
+```python
+chip_id = regmap.read_register("CHIP_ID")
+```
+
+**write_register(register_name, value)**
+
+Write register by name.
+
+```python
+regmap.write_register("MAIN", 0x1E0001)
+```
+
+**read_field(register_name, field_name)**
+
+Read specific field.
+
+```python
+tx_power = regmap.read_field("CSI_1", "TX_DAC")
+```
+
+**write_field(register_name, field_name, value)**
+
+Write specific field.
+
+```python
+regmap.write_field("CSI_1", "TX_DAC", 25)
+```
+
+**get_field_info(register_name, field_name)**
+
+Get field information.
+
+```python
+info = regmap.get_field_info("CSI_1", "TX_DAC")
+print(f"Bits: {info['bits']}")
+print(f"Description: {info['description']}")
+```
+
+**export_state()**
+
+Export current register state.
+
+```python
+state = regmap.export_state()
+```
+
+**import_state(state)**
+
+Import register state.
+
+```python
+regmap.import_state(state)
+```
+
+## ZeroMQ Communication
+
+### AsyncZMQHandler
+
+Server-side ZMQ handler.
+
+```python
+from piradar.hw import AsyncZMQHandler
+```
+
+#### Constructor
+
+```python
+handler = AsyncZMQHandler(
+    data_port=5555,
+    command_port=5556,
+    status_port=5557,
+    bind=True  # Server mode
+)
+```
+
+#### Async Methods
+
+**publish_frame(frame_data, metadata)**
+
+Publish radar frame.
+
+```python
+await handler.publish_frame(
+    frame_data=numpy_array,
+    metadata={"frame_id": 123}
+)
+```
+
+**publish_status(status_str, **kwargs)**
+
+Publish status update.
+
+```python
+await handler.publish_status(
+    "running",
+    frame_count=1000,
+    fps=10.5
+)
+```
+
+**register_command_handler(command_id, handler_func)**
+
+Register command handler.
+
+```python
+async def handle_start(parameters):
+    radar.start()
+    return {"status": "started"}
+
+handler.register_command_handler("start", handle_start)
+```
+
+**start_command_listener()**
+
+Start listening for commands.
+
+```python
+await handler.start_command_listener()
+```
+
+**close()**
+
+Clean up resources.
+
+```python
+await handler.close()
+```
+
+### AsyncZMQClient
+
+Client-side ZMQ interface.
+
+```python
+from piradar.hw import AsyncZMQClient
+```
+
+#### Constructor
+
+```python
+client = AsyncZMQClient(
+    data_port=5555,
+    command_port=5556,
+    status_port=5557,
+    host="localhost",
+    bind=False  # Client mode
+)
+```
+
+#### Async Methods
+
+**receive_frame(timeout)**
+
+Receive radar frame.
+
+```python
+frame = await client.receive_frame(timeout=5.0)
+if frame:
+    print(f"Frame {frame.frame_id}: {frame.data.shape}")
+```
+
+**receive_status(timeout)**
+
+Receive status update.
+
+```python
+status = await client.receive_status(timeout=1.0)
+if status:
+    print(f"Status: {status.radar_status}")
+```
+
+**send_command(command_id, parameters)**
+
+Send command to server.
+
+```python
+response = await client.send_command("start", {})
+if response and response.success:
+    print("Started successfully")
+```
+
+**close()**
+
+Clean up resources.
+
+```python
+await client.close()
+```
+
+## Data Classes
+
+### RadarFrame
+
+Radar frame data container.
+
+```python
+@dataclass
+class RadarFrame:
+    frame_id: int
+    timestamp: float
+    data: np.ndarray
+    timestamp_ns: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = None
+```
+
+### Command
+
+Command message.
+
+```python
+@dataclass
+class Command:
+    command_id: str
+    timestamp: float
+    parameters: Dict[str, Any]
+    source: str = "client"
+```
+
+### Response
+
+Response message.
+
+```python
+@dataclass
+class Response:
+    command_id: str
+    timestamp: float
+    success: bool
+    data: Optional[Any] = None
+    error_message: Optional[str] = None
+```
+
+### Status
+
+Status update message.
+
+```python
+@dataclass
+class Status:
+    timestamp: float
+    radar_status: str
+    frame_count: int
+    fps: float
+    uptime: float
+    memory_usage: Optional[float] = None
+```
+
+## Reinforcement Learning
+
+### RadarRLEnv
+
+Gym-like RL environment.
+
+```python
+from piradar.rl_env import RadarRLEnv
+```
+
+#### Constructor
+
+```python
+env = RadarRLEnv(
+    host="localhost",
+    data_port=5555,
+    command_port=5556
+)
+```
+
+#### Methods
+
+**reset()**
+
+Reset environment.
+
+```python
+observation = env.reset()
+```
+
+**step(action)**
+
+Execute action.
+
+```python
+observation, reward, done, info = env.step(action)
+```
+
+**close()**
+
+Clean up resources.
+
+```python
+env.close()
+```
+
+#### Properties
+
+**action_space**
+
+Gym action space.
+
+```python
+action = env.action_space.sample()
+```
+
+**observation_space**
+
+Gym observation space.
+
+```python
+obs_shape = env.observation_space.shape
+```
+
+## Utilities
+
+### Logging
+
+```python
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Get logger
+logger = logging.getLogger('piradar')
+logger.setLevel(logging.DEBUG)
+```
+
+### Data Processing
+
+```python
+import numpy as np
+
+# Range-FFT
+def range_fft(frame):
+    return np.fft.fft(frame, axis=1)
+
+# Range-Doppler
+def range_doppler(frames):
+    range_fft = np.fft.fft(frames, axis=2)
+    doppler_fft = np.fft.fft(range_fft, axis=1)
+    return np.abs(doppler_fft)
+```
+
+## Type Hints
+
+PiRadar includes full type hints:
+
+```python
+from piradar.hw import BGT60TR13C
+from piradar.config import RadarConfig
+from typing import Optional
+import numpy as np
+
+def collect_data(
+    radar: BGT60TR13C,
+    num_frames: int,
+    config: Optional[RadarConfig] = None
+) -> np.ndarray:
+    """Collect radar data frames."""
+    if config:
+        radar.configure(config)
+    
+    radar.start()
+    
+    frames = []
+    for _ in range(num_frames):
+        frame = radar.frame_buffer.get(timeout=5.0)
+        frames.append(frame)
+    
+    radar.stop()
+    
+    return np.array(frames)
+```
+
+## Exception Handling
+
+```python
+from piradar.hw import BGT60TR13C
+from piradar.exceptions import (
+    RadarError,
+    CommunicationError,
+    ConfigurationError
+)
+
+try:
+    with BGT60TR13C() as radar:
+        radar.configure()
+        radar.start()
+        frame = radar.frame_buffer.get(timeout=5.0)
+
+except CommunicationError as e:
+    print(f"Communication error: {e}")
+except ConfigurationError as e:
+    print(f"Configuration error: {e}")
+except RadarError as e:
+    print(f"Radar error: {e}")
+```
+
+## See Also
+
+- [Quick Start](quickstart) - Getting started
+- [Examples](examples) - Usage examples
+- [CLI Reference](cli-reference) - Command-line interface
+

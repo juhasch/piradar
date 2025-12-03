@@ -1,0 +1,22 @@
+zmq:
+  max_drain: 50
+
+plot:
+  window: "hamming"
+  db_min: 20.0
+  db_max: 100.0
+  colormap: "viridis"
+  range_bins: null
+  doppler_bins: null
+
+chirp_index: -1  # use -1 to average across all chirps
+show_individual_channels: true
+integration_method: "non-coherent"
+
+peak_finding:
+  enabled: true
+  min_range_cm: 5.0
+  threshold: 0.1
+  ignore_range_0: true
+  
+

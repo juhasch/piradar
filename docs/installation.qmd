@@ -1,0 +1,164 @@
+# Installation
+
+## Prerequisites
+
+### For Hardware Usage (Raspberry Pi)
+
+- Python 3.9 or higher
+- Raspberry Pi (tested on Raspberry Pi 5)
+- Dreamhat radar hat installed
+- SPI and GPIO enabled
+
+### For Client Usage (Any System)
+
+- Python 3.9 or higher
+- No special hardware required (for ZMQ client applications)
+
+## Enabling SPI and GPIO on Raspberry Pi
+
+Before installing PiRadar, ensure SPI and GPIO are enabled:
+
+1. Run `sudo raspi-config`
+2. Navigate to **Interface Options**
+3. Enable **SPI**
+4. Reboot your Raspberry Pi
+
+### User Permissions
+
+Add your user to the necessary groups:
+
+```bash
+sudo usermod -a -G spi $USER
+sudo usermod -a -G gpio $USER
+```
+
+**Note**: A reboot is required for group changes to take effect.
+
+## Quick Install Using uv
+
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer. This is the recommended installation method.
+
+```bash
+# Install uv if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment
+uv venv
+source venv/bin/activate  # On Linux/macOS
+# or
+venv\Scripts\activate     # On Windows
+
+# Install PiRadar
+uv pip install .
+```
+
+## Alternative Installation with pip
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Linux/macOS
+
+# Install PiRadar
+pip install .
+```
+
+## Development Installation
+
+For development with all optional dependencies:
+
+```bash
+# Clone the repository
+git clone https://github.com/juhasch/piradar.git
+cd piradar
+
+# Create virtual environment
+uv venv
+source venv/bin/activate
+
+# Install in editable mode with development dependencies
+uv pip install -e .[dev]
+```
+
+## Hardware-Only Dependencies
+
+If you're only using the client features (ZMQ subscriber, data processing) without direct hardware access, you can skip hardware-specific dependencies:
+
+```bash
+pip install -e .[client]
+```
+
+## Verifying Installation
+
+After installation, verify that PiRadar is correctly installed:
+
+```bash
+# Check version
+piradar --version
+
+# Verify hardware connection (requires Dreamhat)
+piradar check-id
+```
+
+Expected output for hardware verification:
+```
+Chip ID: 0x0303
+Digital ID: 0x0003 (BGT60TR13C)
+RF ID: 0x03 (1Tx, 3Rx)
+```
+
+## Documentation Setup
+
+To build and serve this documentation locally:
+
+```bash
+# Install Quarto
+# See https://quarto.org/docs/get-started/
+
+# Preview documentation
+quarto preview docs/
+```
+
+## Troubleshooting
+
+### SPI Permission Denied
+
+If you encounter permission errors when accessing SPI:
+
+```bash
+sudo usermod -a -G spi $USER
+# Reboot required
+```
+
+### GPIO Access Denied
+
+If you encounter permission errors when accessing GPIO:
+
+```bash
+sudo usermod -a -G gpio $USER
+# Reboot required
+```
+
+### Chip Not Detected
+
+If `piradar check-id` fails:
+
+1. **Check Physical Connections**: Ensure the Dreamhat is properly seated on the GPIO header
+2. **Verify GPIO Pins**: Default pins are RST=12, IRQ=25. Check with `gpio readall`
+3. **Power Supply**: Ensure adequate power supply (recommended: 3A power adapter for Pi 5)
+4. **SPI Enabled**: Run `lsmod | grep spi` to verify SPI kernel modules are loaded
+
+### Debug Mode
+
+Enable detailed logging to diagnose issues:
+
+```bash
+piradar --log-level DEBUG check-id
+```
+
+## Next Steps
+
+- [Quick Start Guide](quickstart)
+- [Hardware Overview](hardware-overview)
+- [Configuration Guide](configuration)
+

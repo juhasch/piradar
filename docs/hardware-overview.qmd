@@ -1,0 +1,232 @@
+# Radar Hardware Overview
+
+## Infineon BGT60TR13C Chip
+
+The BGT60TR13C is a highly integrated 60 GHz radar transceiver designed for industrial and automotive applications. It combines a complete FMCW radar system-on-chip with integrated PLL, ADCs, and digital control logic.
+
+### Key Specifications
+
+| Specification | Value |
+|--------------|-------|
+| **Frequency Range** | 58 - 63.5 GHz |
+| **Modulation** | FMCW (Frequency-Modulated Continuous Wave) |
+| **Transmit Channels** | 1 |
+| **Receive Channels** | 3 |
+| **Maximum Bandwidth** | 5.5 GHz |
+| **ADC Resolution** | 11-bit |
+| **ADC Sample Rate** | 1 - 4 Msps |
+| **Maximum Range** | 15 meters (configurable) |
+| **Field of View** | ~90 degrees |
+| **Power Supply** | 3.3V |
+
+## Dreamhat Radar Hat
+
+The Dreamhat is a Raspberry Pi HAT (Hardware Attached on Top) that provides an easy-to-use interface to the BGT60TR13C radar chip.
+
+### Physical Layout
+
+```
+┌─────────────────────────────┐
+│     Dreamhat Radar Hat      │
+│                             │
+│   [BGT60TR13C Chip]         │
+│   ┌─────────────────┐       │
+│   │                 │       │
+│   │  RX2     TX     │       │
+│   │  RX3     RX1    │       │
+│   │                 │       │
+│   X─────────────────┘       │
+│                             │
+│  [40-pin GPIO Connector]    │
+└─────────────────────────────┘
+```
+
+### Antenna placement
+
+![BGT60TR13C Antenna Layout](antenna_bgt60tr13c.png)
+
+### GPIO Connections
+
+| Function | GPIO Pin | BCM Number | Description |
+|----------|----------|------------|-------------|
+| **RST** | 32 | 12 | Chip reset (active low) |
+| **IRQ** | 22 | 25 | Interrupt request |
+| **SPI0 MOSI** | 19 | 10 | SPI data out |
+| **SPI0 MISO** | 21 | 9 | SPI data in |
+| **SPI0 SCLK** | 23 | 11 | SPI clock |
+| **SPI0 CE0** | 24 | 8 | SPI chip enable |
+
+## FMCW Radar Principles
+
+### How FMCW Works
+
+FMCW (Frequency-Modulated Continuous Wave) radar measures distance and velocity by analyzing the frequency difference between transmitted and received signals.
+
+**Basic Operation**:
+
+1. **Transmit Chirp**: The radar transmits a signal that increases in frequency over time (chirp)
+2. **Receive Echo**: The signal reflects off targets and returns to the receiver
+3. **Mix Signals**: The received signal is mixed with the current transmit signal
+4. **Analyze Beat Frequency**: The frequency difference (beat frequency) is proportional to target distance
+5. **Doppler Processing**: Multiple chirps allow velocity measurement via Doppler shift
+
+### Chirp Parameters
+
+A chirp is characterized by:
+
+- **Start Frequency** (\(f_{start}\)): Initial frequency (e.g., 58 GHz)
+- **Stop Frequency** (\(f_{stop}\)): Final frequency (e.g., 63 GHz)
+- **Bandwidth** (\(B = f_{stop} - f_{start}\)): Determines range resolution
+- **Chirp Duration** (\(T_{chirp}\)): Time duration of the chirp
+- **Slope** (\(S = B / T_{chirp}\)): Rate of frequency change
+
+### Range Resolution
+
+The range resolution (\(\Delta R\)) is determined by the bandwidth:
+
+$$
+\Delta R = \frac{c}{2B}
+$$
+
+where \(c\) is the speed of light (≈ 3 × 10⁸ m/s).
+
+**Example**: With 5 GHz bandwidth:
+$$
+\Delta R = \frac{3 \times 10^8}{2 \times 5 \times 10^9} = 0.03 \text{ m} = 3 \text{ cm}
+$$
+
+### Maximum Range
+
+The maximum unambiguous range (\(R_{max}\)) depends on the ADC sample rate (\(f_s\)):
+
+$$
+R_{max} = \frac{c \cdot f_s}{4 \cdot S}
+$$
+
+where \(S\) is the chirp slope.
+
+## Antenna Configuration
+
+### 1 TX + 3 RX Configuration
+
+The BGT60TR13C uses a MIMO (Multiple-Input Multiple-Output) configuration:
+
+- **1 Transmit Antenna**: Broadcasts the FMCW signal
+- **3 Receive Antennas**: Capture reflected signals with spatial diversity
+
+### Benefits of Multiple RX Channels
+
+1. **Angle of Arrival**: Determine direction to targets
+2. **Beamforming**: Focus reception on specific directions
+3. **Interference Rejection**: Improved signal-to-noise ratio
+4. **MIMO Processing**: Virtual antenna array capabilities
+
+### Antenna Pattern
+
+```
+         TX
+          │
+    ┌─────┼─────┐
+    │     ▼     │
+    │           │
+RX1 ◄───────────┤
+    │           │
+RX2 ◄───────────┤
+    │           │
+RX3 ◄───────────┤
+    └───────────┘
+```
+
+## Data Acquisition Pipeline
+
+```
+┌──────────┐     ┌──────┐     ┌──────┐     ┌──────┐     ┌──────┐
+│   PLL    │────►│  TX  │────►│Target│────►│  RX  │────►│Mixer │
+│Frequency │     │Antenna     │      │     │Ant.  │     │      │
+│Ramp Gen  │     └──────┘     └──────┘     └──────┘     └───┬──┘
+└──────────┘                                                  │
+                                                              ▼
+┌──────────┐     ┌──────┐     ┌──────┐     ┌──────────────────┐
+│   FIFO   │◄────│ ADC  │◄────│Filter│◄────│  Baseband        │
+│  Buffer  │     │3-Ch  │     │      │     │  (Beat Frequency)│
+└────┬─────┘     └──────┘     └──────┘     └──────────────────┘
+     │
+     ▼
+  ┌──────┐
+  │  SPI │────► Raspberry Pi
+  └──────┘
+```
+
+### Pipeline Stages
+
+1. **PLL Frequency Ramp Generator**: Generates the chirp waveform
+2. **TX Antenna**: Transmits the FMCW signal
+3. **Target Reflection**: Signal reflects off targets
+4. **RX Antennas** (3 channels): Capture reflected signals
+5. **Mixer**: Combines TX and RX signals to produce beat frequency
+6. **Baseband Filter**: High-pass and low-pass filtering
+7. **ADC** (3 channels): Digitizes baseband signals (11-bit, up to 4 Msps)
+8. **FIFO Buffer**: Stores samples for efficient SPI readout
+9. **SPI Interface**: Transfers data to Raspberry Pi (up to 50 MHz)
+
+## Performance Characteristics
+
+### Operating Modes
+
+The BGT60TR13C supports multiple power modes:
+
+| Mode | Power | Description |
+|------|-------|-------------|
+| **Active** | High | Full TX/RX operation during chirp |
+| **Interchirp** | Medium | Between chirps, reduced power |
+| **Idle** | Low | Quick wake-up capability |
+| **Deep Sleep** | Ultra-low | Minimum power consumption |
+
+### Timing Characteristics
+
+| Parameter | Typical Value | Notes |
+|-----------|---------------|-------|
+| **Chirp Duration** | 100 μs - 1.6 ms | Configurable |
+| **Frame Rate** | 1 - 100 FPS | Application dependent |
+| **Wake-up Time** | < 1 ms | From idle mode |
+| **PLL Lock Time** | ~300 μs | Settling time |
+
+### Data Rates
+
+With 3 RX channels at 2 Msps, 64 samples per chirp:
+
+- **Samples per Frame**: 64 chirps × 3 channels × 64 samples = 12,288 samples
+- **Data per Frame**: 12,288 × 2 bytes (11-bit → 16-bit) = 24,576 bytes
+- **Throughput at 10 FPS**: ~246 KB/s
+- **Throughput at 100 FPS**: ~2.46 MB/s
+
+### SPI Performance
+
+The PiRadar driver supports:
+
+- **Maximum SPI Clock**: 50 MHz (tested on Raspberry Pi 5)
+- **Typical SPI Clock**: 25-40 MHz (stable operation)
+- **DMA Support**: Via Raspberry Pi SPI driver
+- **Burst Read**: Efficient FIFO readout
+
+## Temperature Considerations
+
+### Operating Temperature Range
+
+- **Standard Range**: -40°C to +85°C
+- **Optimal Performance**: 0°C to +50°C
+
+### Temperature Compensation
+
+The BGT60TR13C includes:
+
+- On-chip temperature sensor
+- Automatic temperature compensation for PLL
+- Bandgap reference trimming
+
+## Next Steps
+
+- [Hardware Specifications (Detailed)](hardware-specs)
+- [Configuration Guide](configuration)
+- [Register Map](register-map)
+

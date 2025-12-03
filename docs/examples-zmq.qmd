@@ -1,0 +1,546 @@
+# ZeroMQ Examples
+
+Practical examples for ZeroMQ communication with PiRadar.
+
+## Basic Streaming
+
+### Simple Publisher
+
+Server side (Raspberry Pi):
+
+```python
+#!/usr/bin/env python3
+"""Simple radar data publisher via ZMQ"""
+
+import asyncio
+import time
+from piradar.hw import BGT60TR13C
+from piradar.hw import AsyncZMQHandler
+
+async def main():
+    # Create ZMQ handler
+    handler = AsyncZMQHandler(
+        data_port=5555,
+        command_port=5556,
+        status_port=5557
+    )
+    
+    print("Starting radar publisher on port 5555...")
+    
+    # Initialize radar
+    with BGT60TR13C() as radar:
+        radar.configure()
+        radar.start()
+        
+        frame_id = 0
+        start_time = time.time()
+        
+        try:
+            while True:
+                # Get frame
+                frame = radar.frame_buffer.get(timeout=5.0)
+                
+                # Publish
+                await handler.publish_frame(frame, {
+                    "frame_id": frame_id,
+                    "timestamp": time.time()
+                })
+                
+                frame_id += 1
+                
+                # Print stats every 10 frames
+                if frame_id % 10 == 0:
+                    elapsed = time.time() - start_time
+                    fps = frame_id / elapsed
+                    print(f"Published {frame_id} frames ({fps:.2f} FPS)")
+                    
+                    # Publish status
+                    await handler.publish_status(
+                        f"running",
+                        frame_count=frame_id,
+                        fps=fps
+                    )
+        
+        finally:
+            radar.stop()
+            await handler.close()
+            print("Publisher stopped")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Simple Subscriber
+
+Client side (any machine):
+
+```python
+#!/usr/bin/env python3
+"""Simple ZMQ subscriber for radar data"""
+
+import asyncio
+import numpy as np
+from piradar.hw import AsyncZMQClient
+
+async def main():
+    # Create client
+    client = AsyncZMQClient(
+        data_port=5555,
+        host="localhost"  # or Raspberry Pi IP
+    )
+    
+    print("Connecting to radar server...")
+    
+    frame_count = 0
+    
+    try:
+        while frame_count < 100:
+            # Receive frame
+            frame = await client.receive_frame(timeout=5.0)
+            
+            if frame:
+                frame_count += 1
+                print(f"Frame {frame.frame_id}: "
+                      f"shape={frame.data.shape}, "
+                      f"mean={frame.data.mean():.2f}")
+            else:
+                print("Timeout waiting for frame")
+    
+    finally:
+        await client.close()
+        print(f"Received {frame_count} frames")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Bidirectional Communication
+
+### Server with Command Handling
+
+```python
+#!/usr/bin/env python3
+"""ZMQ server with command handling"""
+
+import asyncio
+from piradar.hw import BGT60TR13C
+from piradar.hw import AsyncZMQHandler
+from piradar.config import RadarConfig
+
+class RadarServer:
+    def __init__(self):
+        self.handler = AsyncZMQHandler(
+            data_port=5555,
+            command_port=5556,
+            status_port=5557
+        )
+        self.radar = None
+        self.running = False
+        self.frame_count = 0
+        
+        # Register command handlers
+        self.handler.register_command_handler("start", self.handle_start)
+        self.handler.register_command_handler("stop", self.handle_stop)
+        self.handler.register_command_handler("configure", self.handle_configure)
+        self.handler.register_command_handler("get_status", self.handle_get_status)
+    
+    async def handle_start(self, parameters):
+        """Start radar data collection"""
+        if self.running:
+            return {"status": "already_running"}
+        
+        self.radar.start()
+        self.running = True
+        
+        # Start data publisher
+        asyncio.create_task(self.publish_data())
+        
+        return {"status": "started", "message": "Radar started"}
+    
+    async def handle_stop(self, parameters):
+        """Stop radar data collection"""
+        if not self.running:
+            return {"status": "already_stopped"}
+        
+        self.running = False
+        self.radar.stop()
+        
+        return {"status": "stopped", "frame_count": self.frame_count}
+    
+    async def handle_configure(self, parameters):
+        """Configure radar with file"""
+        config_file = parameters.get("config_file")
+        if not config_file:
+            raise ValueError("config_file parameter required")
+        
+        config = RadarConfig.read_yaml(config_file)
+        self.radar.configure(config)
+        
+        return {
+            "status": "configured",
+            "config_file": config_file,
+            "start_freq": config.start_frequency_Hz,
+            "stop_freq": config.stop_frequency_Hz
+        }
+    
+    async def handle_get_status(self, parameters):
+        """Get current radar status"""
+        return {
+            "running": self.running,
+            "frame_count": self.frame_count,
+            "radar_connected": self.radar is not None
+        }
+    
+    async def publish_data(self):
+        """Publish radar data frames"""
+        while self.running:
+            try:
+                frame = self.radar.frame_buffer.get(timeout=1.0)
+                
+                await self.handler.publish_frame(frame, {
+                    "frame_id": self.frame_count,
+                    "timestamp": time.time()
+                })
+                
+                self.frame_count += 1
+                
+            except Exception as e:
+                print(f"Error publishing frame: {e}")
+    
+    async def run(self):
+        """Run the server"""
+        # Initialize radar
+        self.radar = BGT60TR13C()
+        self.radar.__enter__()
+        self.radar.configure()
+        
+        # Start command listener
+        print("Server started. Listening for commands...")
+        print("Press Ctrl+C to stop")
+        
+        try:
+            await self.handler.start_command_listener()
+        
+        finally:
+            if self.running:
+                self.radar.stop()
+            self.radar.__exit__(None, None, None)
+            await self.handler.close()
+
+if __name__ == "__main__":
+    server = RadarServer()
+    asyncio.run(server.run())
+```
+
+### Interactive Client
+
+```python
+#!/usr/bin/env python3
+"""Interactive ZMQ client"""
+
+import asyncio
+from piradar.hw import AsyncZMQClient
+
+class InteractiveClient:
+    def __init__(self, host="localhost"):
+        self.client = AsyncZMQClient(
+            data_port=5555,
+            command_port=5556,
+            status_port=5557,
+            host=host
+        )
+        self.receiving_data = False
+    
+    async def send_command(self, command_id, parameters=None):
+        """Send command and print response"""
+        print(f"\nSending command: {command_id}")
+        
+        response = await self.client.send_command(
+            command_id,
+            parameters or {}
+        )
+        
+        if response:
+            if response.success:
+                print(f"✓ Success: {response.data}")
+            else:
+                print(f"✗ Error: {response.error_message}")
+        else:
+            print("✗ Timeout waiting for response")
+    
+    async def receive_data(self, num_frames=10):
+        """Receive and display data frames"""
+        print(f"\nReceiving {num_frames} frames...")
+        
+        for i in range(num_frames):
+            frame = await self.client.receive_frame(timeout=5.0)
+            
+            if frame:
+                print(f"Frame {frame.frame_id}: "
+                      f"shape={frame.data.shape}, "
+                      f"mean={frame.data.mean():.2f}")
+            else:
+                print(f"Frame {i}: Timeout")
+    
+    async def interactive_loop(self):
+        """Interactive command loop"""
+        print("Interactive Radar Client")
+        print("Commands: start, stop, status, data [n], quit")
+        print()
+        
+        while True:
+            try:
+                # Get user input
+                cmd = input("> ").strip().lower()
+                
+                if cmd == "quit":
+                    break
+                
+                elif cmd == "start":
+                    await self.send_command("start")
+                
+                elif cmd == "stop":
+                    await self.send_command("stop")
+                
+                elif cmd == "status":
+                    await self.send_command("get_status")
+                
+                elif cmd.startswith("data"):
+                    parts = cmd.split()
+                    num_frames = int(parts[1]) if len(parts) > 1 else 10
+                    await self.receive_data(num_frames)
+                
+                elif cmd.startswith("config"):
+                    parts = cmd.split()
+                    if len(parts) < 2:
+                        print("Usage: config <file>")
+                    else:
+                        await self.send_command("configure", {
+                            "config_file": parts[1]
+                        })
+                
+                else:
+                    print(f"Unknown command: {cmd}")
+            
+            except KeyboardInterrupt:
+                print("\nInterrupted")
+                break
+            
+            except Exception as e:
+                print(f"Error: {e}")
+        
+        await self.client.close()
+        print("Client closed")
+
+if __name__ == "__main__":
+    import sys
+    
+    host = sys.argv[1] if len(sys.argv) > 1 else "localhost"
+    client = InteractiveClient(host)
+    
+    asyncio.run(client.interactive_loop())
+```
+
+## Advanced Examples
+
+### Multi-Client Setup
+
+Multiple clients receiving same data:
+
+```python
+#!/usr/bin/env python3
+"""Multiple clients receiving simultaneously"""
+
+import asyncio
+from piradar.hw import AsyncZMQClient
+
+async def client_worker(client_id, host, num_frames):
+    """Worker function for each client"""
+    client = AsyncZMQClient(data_port=5555, host=host)
+    
+    print(f"Client {client_id} started")
+    
+    for i in range(num_frames):
+        frame = await client.receive_frame(timeout=5.0)
+        if frame:
+            print(f"Client {client_id} received frame {frame.frame_id}")
+    
+    await client.close()
+    print(f"Client {client_id} finished")
+
+async def main():
+    host = "localhost"
+    num_clients = 3
+    frames_per_client = 20
+    
+    # Start multiple clients
+    tasks = [
+        client_worker(i, host, frames_per_client)
+        for i in range(num_clients)
+    ]
+    
+    await asyncio.gather(*tasks)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Data Recording Client
+
+Save streamed data to file:
+
+```python
+#!/usr/bin/env python3
+"""Record ZMQ streamed data to file"""
+
+import asyncio
+import numpy as np
+import h5py
+from piradar.hw import AsyncZMQClient
+
+async def record_to_hdf5(host, output_file, num_frames):
+    """Record radar data to HDF5 file"""
+    client = AsyncZMQClient(data_port=5555, host=host)
+    
+    frames = []
+    timestamps = []
+    metadata_list = []
+    
+    print(f"Recording {num_frames} frames to {output_file}...")
+    
+    for i in range(num_frames):
+        frame = await client.receive_frame(timeout=5.0)
+        
+        if frame:
+            frames.append(frame.data)
+            timestamps.append(frame.timestamp)
+            metadata_list.append(frame.metadata)
+            
+            if (i + 1) % 10 == 0:
+                print(f"Recorded {i+1}/{num_frames} frames")
+        else:
+            print(f"Timeout on frame {i}")
+    
+    await client.close()
+    
+    # Save to HDF5
+    with h5py.File(output_file, 'w') as f:
+        f.create_dataset('frames', data=np.array(frames))
+        f.create_dataset('timestamps', data=np.array(timestamps))
+        
+        # Save first frame's metadata as attributes
+        if metadata_list and metadata_list[0]:
+            for key, value in metadata_list[0].items():
+                if isinstance(value, (int, float, str)):
+                    f.attrs[key] = value
+    
+    print(f"Saved {len(frames)} frames to {output_file}")
+
+if __name__ == "__main__":
+    import sys
+    
+    host = sys.argv[1] if len(sys.argv) > 1 else "localhost"
+    output = sys.argv[2] if len(sys.argv) > 2 else "recorded_data.h5"
+    frames = int(sys.argv[3]) if len(sys.argv) > 3 else 100
+    
+    asyncio.run(record_to_hdf5(host, output, frames))
+```
+
+### Processing Pipeline
+
+Real-time processing pipeline:
+
+```python
+#!/usr/bin/env python3
+"""Real-time processing pipeline"""
+
+import asyncio
+import numpy as np
+from piradar.hw import AsyncZMQClient
+from collections import deque
+
+class ProcessingPipeline:
+    def __init__(self, host="localhost"):
+        self.client = AsyncZMQClient(data_port=5555, host=host)
+        self.frame_buffer = deque(maxlen=10)
+    
+    def process_frame(self, frame_data):
+        """Process a single frame"""
+        # Simple range-FFT
+        range_fft = np.fft.fft(frame_data, axis=1)
+        range_profile = np.abs(range_fft).mean(axis=(0, 2))
+        
+        # Find peaks
+        threshold = range_profile.mean() + 2 * range_profile.std()
+        peaks = np.where(range_profile > threshold)[0]
+        
+        return {
+            "num_peaks": len(peaks),
+            "peak_indices": peaks.tolist(),
+            "max_power": range_profile.max()
+        }
+    
+    async def run(self, num_frames=100):
+        """Run processing pipeline"""
+        print("Starting processing pipeline...")
+        
+        for i in range(num_frames):
+            frame = await self.client.receive_frame(timeout=5.0)
+            
+            if frame:
+                # Add to buffer
+                self.frame_buffer.append(frame.data)
+                
+                # Process
+                results = self.process_frame(frame.data)
+                
+                print(f"Frame {frame.frame_id}: "
+                      f"peaks={results['num_peaks']}, "
+                      f"max_power={results['max_power']:.2f}")
+            else:
+                print(f"Frame {i}: Timeout")
+        
+        await self.client.close()
+
+if __name__ == "__main__":
+    pipeline = ProcessingPipeline()
+    asyncio.run(pipeline.run())
+```
+
+## Command Line Examples
+
+### Start Server
+
+```bash
+# Basic server
+piradar publish
+
+# Custom ports
+piradar publish --port 6000
+
+# With configuration
+piradar publish --config radar_config.yaml
+```
+
+### Connect Client
+
+```bash
+# Basic client
+piradar zmq-client
+
+# Remote server
+piradar zmq-client --host 192.168.1.100
+
+# Interactive mode
+piradar zmq-client --interactive
+
+# Limited frames
+piradar zmq-client --frames 100
+```
+
+## Next Steps
+
+- [Adaptive Examples](examples-adaptive)
+- [Network Data Format](network-format)
+- [Python API Reference](python-api)
+

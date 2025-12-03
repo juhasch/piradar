@@ -1,0 +1,59 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "PiRadar Documentation"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - href: installation.qmd
+        text: Installation
+      - href: quickstart.qmd
+        text: Quick Start
+  sidebar:
+    style: "docked"
+    search: true
+    contents:
+      - section: "Getting Started"
+        contents:
+          - installation.qmd
+          - package-structure.qmd
+          - quickstart.qmd
+      - section: "Hardware"
+        contents:
+          - hardware-overview.qmd
+          - hardware-specs.qmd
+      - section: "Examples"
+        contents:
+          - examples.qmd
+          - examples-zmq.qmd
+          - examples-adaptive.qmd
+          - client-configuration.qmd
+      - section: "Network & Data"
+        contents:
+          - network-format.qmd
+          - zmq-communication.qmd
+          - h5-file-format.qmd
+      - section: "Programming the Radar"
+        contents:
+          - configuration.qmd
+          - register-map.qmd
+          - direct-control.qmd
+      - section: "API Reference"
+        contents:
+          - cli-reference.qmd
+          - python-api.qmd
+      - section: "Advanced"
+        contents:
+          - adaptive-radar.qmd
+      - section: "Contributing"
+        contents:
+          - development.qmd
+
+format:
+  html:
+    theme: flatly
+    toc: true
+    css: styles.css

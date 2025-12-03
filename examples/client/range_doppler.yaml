@@ -1,0 +1,11 @@
+zmq:
+  max_drain: 5
+
+plot:
+  window: "hamming"
+  db_min: 30.0
+  db_max: 120.0
+  colormap: "viridis"
+  range_bins: null
+  doppler_bins: null
+

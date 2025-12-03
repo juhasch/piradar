@@ -1,0 +1,468 @@
+# CLI Reference
+
+Complete reference for the PiRadar command-line interface.
+
+## Global Options
+
+These options apply to all commands:
+
+```bash
+piradar [GLOBAL_OPTIONS] COMMAND [COMMAND_OPTIONS]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--rst-pin PIN` | 12 | GPIO pin for reset (BCM numbering) |
+| `--irq-pin PIN` | 25 | GPIO pin for interrupt (BCM numbering) |
+| `--log-level LEVEL` | INFO | Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL |
+| `--version` | | Show version and exit |
+| `--help` | | Show help and exit |
+
+**Example**:
+```bash
+piradar --log-level DEBUG --rst-pin 12 check-id
+```
+
+## Commands
+
+### check-id
+
+Verify the radar chip is connected and responds correctly.
+
+```bash
+piradar check-id
+```
+
+**Output**:
+```
+Chip ID: 0x0303
+Digital ID: 0x0003 (BGT60TR13C)
+RF ID: 0x03 (1Tx, 3Rx)
+```
+
+**Exit codes**:
+
+- 0: Chip detected and verified
+- 1: Chip not detected or incorrect ID
+
+**Example**:
+```bash
+if piradar check-id; then
+    echo "Radar connected"
+else
+    echo "Radar not found"
+fi
+```
+
+### monitor
+
+Monitor radar data in real-time with live statistics.
+
+```bash
+piradar monitor [OPTIONS]
+```
+
+**Options**:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--duration SECONDS` | 30 | Monitoring duration in seconds |
+| `--config FILE` | None | Configuration file path |
+
+**Example**:
+```bash
+# Monitor for 60 seconds
+piradar monitor --duration 60
+
+# Monitor with custom config
+piradar monitor --config radar_config.yaml --duration 30
+
+# Monitor indefinitely (Ctrl+C to stop)
+piradar monitor --duration 0
+```
+
+**Output**:
+```
+Starting radar monitor (duration: 30s)
+Frame 10: mean=1234.5, std=567.8, fps=10.2
+Frame 20: mean=1235.1, std=568.2, fps=10.1
+...
+Monitor complete. Collected 300 frames (avg FPS: 10.0)
+```
+
+### record
+
+Record radar data to file.
+
+```bash
+piradar record [OPTIONS]
+```
+
+**Options**:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--frames COUNT` | 100 | Number of frames to record |
+| `--output FILE` | required | Output file path |
+| `--format FORMAT` | npy | File format: npy or h5 |
+| `--config FILE` | None | Configuration file path |
+| `--metadata` | False | Include metadata in output |
+
+**Examples**:
+
+```bash
+# Record 100 frames to NumPy file
+piradar record --frames 100 --output data.npy
+
+# Record to HDF5 with metadata
+piradar record --frames 200 --output data.h5 --format h5 --metadata
+
+# Record with custom configuration
+piradar record --config long_range.yaml --frames 500 --output long_range.npy
+
+# Continuous recording (Ctrl+C to stop)
+piradar record --output continuous.h5
+```
+
+**Output**:
+```
+Recording 100 frames to data.npy...
+Progress: ████████████████████ 100/100 frames
+Recording complete. Saved 100 frames (48.0 MB)
+```
+
+### publish
+
+Start ZMQ publisher for real-time data streaming.
+
+```bash
+piradar publish [OPTIONS]
+```
+
+**Options**:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--port PORT` | 5555 | Data publishing port |
+| `--config FILE` | None | Configuration file path |
+| `--frames COUNT` | None | Limit number of frames (optional) |
+
+**Ports**:
+
+- Data port: Specified port (default: 5555)
+- Command port: Data port + 1 (default: 5556)
+- Status port: Data port + 2 (default: 5557)
+
+**Examples**:
+
+```bash
+# Start publisher on default port
+piradar publish
+
+# Custom port
+piradar publish --port 6000
+
+# With configuration
+piradar publish --config radar_config.yaml
+
+# Limited frames
+piradar publish --frames 1000
+```
+
+**Output**:
+```
+Starting ZMQ publisher
+  Data port: 5555
+  Command port: 5556
+  Status port: 5557
+Press Ctrl+C to stop
+Published frame 10 (10.2 FPS)
+Published frame 20 (10.1 FPS)
+...
+```
+
+### zmq-client
+
+Connect to ZMQ server as a client.
+
+```bash
+piradar zmq-client [OPTIONS]
+```
+
+**Options**:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--host HOST` | localhost | Server hostname or IP address |
+| `--data-port PORT` | 5555 | Data subscription port |
+| `--command-port PORT` | 5556 | Command port |
+| `--status-port PORT` | 5557 | Status subscription port |
+| `--frames COUNT` | None | Maximum frames to receive |
+| `--interactive` | False | Enable interactive command mode |
+
+**Examples**:
+
+```bash
+# Connect to local server
+piradar zmq-client
+
+# Connect to remote server
+piradar zmq-client --host 192.168.1.100
+
+# Interactive mode
+piradar zmq-client --interactive
+
+# Receive limited frames
+piradar zmq-client --frames 100
+
+# Custom ports
+piradar zmq-client --data-port 6000 --command-port 6001
+```
+
+**Interactive commands**:
+
+When using `--interactive` mode:
+
+```
+Available commands:
+  start              - Start the radar
+  stop               - Stop the radar
+  configure <file>   - Load configuration file
+  get_status         - Get current radar status
+  data [count]       - Receive data frames
+  quit               - Exit client
+
+> start
+✓ Success: {'status': 'started', 'message': 'Radar started'}
+
+> data 10
+Frame 1: shape=(64, 128, 3), mean=1234.5
+Frame 2: shape=(64, 128, 3), mean=1235.1
+...
+```
+
+### adaptive-server
+
+Start adaptive radar server with parameter control.
+
+```bash
+piradar adaptive-server [OPTIONS]
+```
+
+**Options**:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--port PORT` | 5555 | Data publishing port |
+| `--config FILE` | None | Configuration file path |
+| `--synthetic` | False | Use synthetic data (no hardware) |
+
+**Examples**:
+
+```bash
+# Hardware mode (requires Dreamhat)
+piradar adaptive-server
+
+# Synthetic mode (testing without hardware)
+piradar adaptive-server --synthetic
+
+# Custom configuration
+piradar adaptive-server --config radar_config.yaml
+
+# Custom port
+piradar adaptive-server --port 6000
+```
+
+**Output**:
+```
+Starting Adaptive Radar Server
+  Mode: Hardware
+  Data port: 5555
+  Command port: 5556
+  Status port: 5557
+Available commands:
+  - start, stop, configure
+  - read_parameter, write_parameter, batch_write
+  - list_parameters, get_parameter_info
+  - read_register_field, write_register_field
+  - list_all_registers
+Press Ctrl+C to stop
+```
+
+### test
+
+Run the test suite.
+
+```bash
+piradar test [OPTIONS]
+```
+
+**Options**:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--hardware` | False | Include hardware tests |
+| `--integration` | False | Include integration tests |
+| `-v, --verbose` | False | Verbose output |
+
+**Examples**:
+
+```bash
+# Run unit tests only
+piradar test
+
+# Include hardware tests (requires Dreamhat)
+piradar test --hardware
+
+# Run integration tests
+piradar test --integration
+
+# Verbose mode
+piradar test -v
+```
+
+## Configuration Files
+
+All commands that accept `--config FILE` support:
+
+- **YAML format** (`.yaml`, `.yml`) - Recommended
+- **Text format** (`.txt`) - Legacy Infineon format
+- **JSON format** (`.json`) - Legacy format
+
+See [Configuration](configuration) for details.
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PIRADAR_LOG_LEVEL` | Default logging level | INFO |
+| `PIRADAR_RST_PIN` | Default reset GPIO pin | 12 |
+| `PIRADAR_IRQ_PIN` | Default IRQ GPIO pin | 25 |
+
+**Example**:
+```bash
+export PIRADAR_LOG_LEVEL=DEBUG
+export PIRADAR_RST_PIN=16
+piradar check-id
+```
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Hardware not found |
+| 3 | Configuration error |
+| 4 | Network error |
+| 130 | Interrupted (Ctrl+C) |
+
+## Shell Completion
+
+### Bash
+
+```bash
+# Install completion
+piradar --install-completion bash
+
+# Or add to ~/.bashrc
+eval "$(_PIRADAR_COMPLETE=bash_source piradar)"
+```
+
+### Zsh
+
+```bash
+# Install completion
+piradar --install-completion zsh
+
+# Or add to ~/.zshrc
+eval "$(_PIRADAR_COMPLETE=zsh_source piradar)"
+```
+
+## Common Workflows
+
+### Quick Hardware Test
+
+```bash
+# Verify hardware, monitor for 10 seconds
+piradar check-id && piradar monitor --duration 10
+```
+
+### Data Collection Pipeline
+
+```bash
+# Record data with multiple configurations
+for config in configs/*.yaml; do
+    name=$(basename "$config" .yaml)
+    piradar record --config "$config" \
+                   --frames 200 \
+                   --output "data_${name}.npy"
+done
+```
+
+### Remote Data Collection
+
+```bash
+# On Raspberry Pi
+piradar publish --config radar_config.yaml
+
+# On client machine
+piradar zmq-client --host raspberrypi.local \
+                   --frames 1000 > data_log.txt
+```
+
+### Automated Testing
+
+```bash
+#!/bin/bash
+# test_radar.sh
+
+echo "Testing radar connection..."
+if ! piradar check-id; then
+    echo "ERROR: Radar not detected"
+    exit 1
+fi
+
+echo "Recording test data..."
+piradar record --frames 50 --output test_data.npy
+
+echo "Tests complete"
+```
+
+## Troubleshooting
+
+### Permission Errors
+
+```bash
+# Add user to spi and gpio groups
+sudo usermod -a -G spi,gpio $USER
+# Reboot required
+```
+
+### Chip Not Detected
+
+```bash
+# Check with debug logging
+piradar --log-level DEBUG check-id
+
+# Try different GPIO pins
+piradar --rst-pin 16 --irq-pin 27 check-id
+```
+
+### ZMQ Connection Failed
+
+```bash
+# Check if port is in use
+sudo lsof -i :5555
+
+# Try different port
+piradar publish --port 6000
+```
+
+## See Also
+
+- [Quick Start](quickstart) - Getting started guide
+- [Configuration](configuration) - Configuration file reference
+- [Python API](python-api) - Python API documentation
+- [Examples](examples) - Usage examples
+

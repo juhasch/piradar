@@ -1,0 +1,75 @@
+# Introduction {.unnumbered}
+
+PiRadar is a high-performance Python driver for the [Dreamhat](https://shop.pimoroni.com/products/dream-hat-plus-radar?variant=55529907290491) Raspberry Pi Radar hat, featuring the Infineon BGT60TR13C millimeter wave radar chip.
+
+## Overview
+
+This driver provides a comprehensive Python interface for the BGT60TR13C radar sensor, enabling:
+
+- **Real-time Data Acquisition**: High-speed SPI communication at up to 50 MHz
+- **Flexible Data Formats**: Export to NumPy arrays (.npy) or HDF5 files (.h5)
+- **Network Streaming**: Real-time data streaming via ZeroMQ with async support
+- **Adaptive Control**: Dynamic parameter adjustment for AI/ML applications
+- **Production Ready**: Comprehensive error handling, logging, and testing
+
+## Key Features
+
+### High-Performance Data Collection
+
+- Optimized SPI interface supporting up to 50 MHz clock speed
+- Efficient frame buffer management with configurable FIFO parameters
+- DMA-ready architecture for minimal CPU overhead
+- Real-time streaming capabilities
+
+### Flexible Configuration
+
+- YAML-based configuration files with validation
+- Support for legacy Infineon tool formats (.txt, .json)
+- Runtime parameter modification
+- Pre-configured profiles for common use cases
+
+### Network Communication
+
+- ZeroMQ-based bidirectional communication
+- Async/await support for non-blocking operations
+- Multiple port configuration (data, commands, status)
+- Built-in serialization for NumPy arrays
+
+### AI/ML Integration
+
+- Direct register map access for learning algorithms
+- Real-time parameter control via ZMQ backchannel
+- Performance monitoring and change tracking
+- Gym-like reinforcement learning environment
+
+## What's in This Documentation
+
+This documentation is organized into the following sections:
+
+- **Getting Started**: Installation instructions and quick start examples
+- **Hardware**: Detailed hardware specifications and overview
+- **Examples**: Practical examples for common use cases
+- **Network & Data**: Network data formats and ZeroMQ communication
+- **Programming the Radar**: Configuration and register-level control
+- **API Reference**: Complete CLI and Python API documentation
+- **Advanced Topics**: Adaptive control and AI integration
+- **Development**: Contributing guidelines and development setup
+
+## Quick Links
+
+- [GitHub Repository](https://github.com/juhasch/piradar)
+- [Installation Guide](installation)
+- [Quick Start](quickstart)
+- [Hardware Overview](hardware-overview)
+- [Examples](examples)
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file in the repository for details.
+
+## Acknowledgments
+
+- [Pimoroni](https://shop.pimoroni.com/) for the Dreamhat hardware
+- [Infineon](https://www.infineon.com/) for the BGT60TR13C chip
+- The Raspberry Pi Foundation for the amazing platform
+

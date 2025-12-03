@@ -1,0 +1,4077 @@
+# BGT60TR13C Radar Sensor Register Map
+# Based on Infineon BGT60TR13C DataSheet v2.4.9
+
+
+registers:
+  # Main Register
+  MAIN:
+    addr: 0x00
+    width: 24
+    desc: "Main register - controls top-level behavior of the chip"
+    reset: 0x1E0000
+    fields:
+      LDO_MODE:
+        msb: 23
+        lsb: 23
+        access: RW
+        reset: 0
+        desc: >
+          LDO settling power/settling tradeoff.
+          0b … Low power (~50 µA), slow settling
+          1b … High power (~100 µA), fast settling
+      
+      LOAD_STRENGTH:
+        msb: 22
+        lsb: 21
+        access: RW
+        reset: 0
+        desc: >
+          Dummy load at LDO output to smooth VDDC spikes/overshoot/undershoot.
+          0d … Disabled
+          1d … 100 µA (dummy load)
+          2d … 200 µA (dummy load)
+          3d … 400 µA (dummy load)
+      
+      BG_CLK_DIV:
+        msb: 20
+        lsb: 19
+        access: RW
+        reset: 3
+        desc: >
+          MADC bandgap clock divider.
+          0d … Clock off
+          1d … Divider 1
+          2d … Divider 2
+          3d … Divider 4
+          Note: not "clock tree balanced".
+      
+      SADC_CLK_DIV:
+        msb: 18
+        lsb: 17
+        access: RW
+        reset: 3
+        desc: >
+          SADC bandgap clock divider.
+          0d … Clock off
+          1d … Divider 1
+          2d … Divider 2
+          3d … Divider 4
+          Note: not "clock tree balanced".
+      
+      CW_MODE:
+        msb: 16
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Continuous-Wave mode. Set to 1b to run PLL/RF/ADC with values from PDFT[0,1] and CS1
+          without executing shapes.
+      
+      TR_WKUP_MUL:
+        msb: 15
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Timer multiplier for wake-up time T_WU. See formula under MAIN:TR_WKUP.
+      
+      TR_WKUP:
+        msb: 11
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient for T_WU. 0b → T_SYS_CLK. For 1…255:
+          T_WU = (TR_WKUP × 2^TR_WKUP_MUL × 8 + TR_WKUP_MUL + 3) × T_SYS_CLK.
+          Typical use-case: T_WUTYP = 1 ms.
+      
+      FIFO_RESET:
+        msb: 3
+        lsb: 3
+        access: W1C
+        reset: 0
+        desc: >
+          Clears and resets data_fifo. 0b … no change; 1b … reset FIFO, then auto-clear to 0.
+      
+      FSM_RESET:
+        msb: 2
+        lsb: 2
+        access: W1C
+        reset: 0
+        desc: >
+          Control FSM reset. 0b … no change; 1b … reset control FSM, then auto-clear to 0.
+      
+      SW_RESET:
+        msb: 1
+        lsb: 1
+        access: W1C
+        reset: 0
+        desc: >
+          Software reset. 0b … no change; 1b … reset register settings, then auto-clear to 0.
+      
+      FRAME_START:
+        msb: 0
+        lsb: 0
+        access: W1C
+        reset: 0
+        desc: >
+          Start frame generation. 1b starts; ignored if already running. Can be stopped by FSM_RESET.
+
+  # MADC Control Register
+  ADC0:
+    addr: 0x01
+    width: 24
+    desc: "MADC control register - sets ADCs in Rx chain"
+    reset: 0x0A0240
+    fields:
+      ADC_DIV:
+        msb: 23
+        lsb: 14
+        access: RW
+        reset: 40
+        desc: >
+          Sampling frequency divider.
+          f_ADC_SAMP = f_ADC_CLK / ADC_DIV.
+          20d … min divider  → ~4 Msps
+          33d … typical      → ~2.42 Msps
+          1023d … max divider → ~78.201 ksps
+      
+      RSVD:
+        msb: 13
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      TRIG_MADC:
+        msb: 12
+        lsb: 12
+        access: W
+        reset: 0
+        desc: >
+          Test mode single-measurement trigger.
+          0b … return value after internal capture
+          1b … single trigger event
+      
+      MSB_CTRL:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          MSB decision time during calibration/conversion.
+          0b … single MSB decision time
+          1b … doubled MSB decision time
+      
+      TRACK_CFG:
+        msb: 10
+        lsb: 9
+        access: RW
+        reset: 1
+        desc: >
+          Tracking conversion configuration.
+          0d … no sub-conversions (no averaging)
+          1d … 1 sub-conversion
+          2d … 3 sub-conversions
+          3d … 7 sub-conversions
+      
+      DSCAL:
+        msb: 8
+        lsb: 8
+        access: RW
+        reset: 0
+        desc: >
+          Disable startup calibration.
+          0b … startup calibration enabled
+          1b … startup calibration disabled
+      
+      STC:
+        msb: 7
+        lsb: 6
+        access: RW
+        reset: 1
+        desc: >
+          Sample time control.
+          0d … 50 ns
+          1d … 100 ns
+          2d … 200 ns
+          3d … 400 ns
+      
+      BG_CHOP_EN:
+        msb: 5
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: >
+          Bandgap chopping enable.
+          0b … no chopping
+          1b … chopping enabled
+      
+      BG_TC_TRIM:
+        msb: 4
+        lsb: 2
+        access: RW
+        reset: 0
+        desc: >
+          Static temperature coefficient trim.
+          0d … min, 7d … max
+      
+      ADC_OVERS_CFG:
+        msb: 1
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Oversampling configuration.
+          0d … standard single 11-bit conversion
+          1d … Reserved
+          2d … Reserved
+          3d … Reserved
+          Note: oversampling must be set to 0d.
+
+  # CHIP_ID Register
+  CHIP_ID:
+    addr: 0x02
+    width: 24
+    desc: "Digital and RF version information"
+    reset: 0x000303
+    fields:
+      DIGITAL_ID:
+        msb: 23
+        lsb: 8
+        access: R
+        reset: 3
+        desc: "3d … BGT60TR13C"
+      
+      RF_ID:
+        msb: 7
+        lsb: 0
+        access: R
+        reset: 3
+        desc: "3d … 1Tx, 3Rx"
+
+  # STAT1 Register
+  STAT1:
+    addr: 0x03
+    width: 24
+    desc: "Status register 1 - frame and shape counters"
+    reset: 0x000000
+    fields:
+      FRAME_CNT:
+        msb: 23
+        lsb: 12
+        access: R
+        reset: 0
+        desc: >
+          Frame counter value.
+          0d … Reset value / after max. value rollover
+          4095d … Max. value
+          Note: For debug only, not used when endless mode enabled.
+      
+      SHAPE_GRP_CNT:
+        msb: 11
+        lsb: 0
+        access: R
+        reset: 0
+        desc: >
+          Shape group counter.
+          0d … Reset value / after max. value reached
+          4095d … Max. value
+
+  # PACR1 Register
+  PACR1:
+    addr: 0x04
+    width: 24
+    desc: "PLL analog control register 1"
+    reset: 0x000000
+    fields:
+      OSCCLKEN:
+        msb: 23
+        lsb: 23
+        access: RW
+        reset: 0
+        desc: >
+          Enable clock path for system clock.
+          0b … Clock off
+          1b … Clock path active
+          Note: Controlled by FSM during operation.
+      
+      LFEN:
+        msb: 22
+        lsb: 22
+        access: RW
+        reset: 0
+        desc: >
+          Enable loop filter.
+          0b … Off (default)
+          1b … On
+      
+      CPEN:
+        msb: 21
+        lsb: 21
+        access: RW
+        reset: 0
+        desc: >
+          Enable charge pump.
+          0b … Off (default)
+          1b … On
+      
+      BIASFORC:
+        msb: 20
+        lsb: 20
+        access: RW
+        reset: 1
+        desc: >
+          Use fixed biasing inside charge pump.
+          0b … Fixed biasing off = bias regulation loop active (default)
+          1b … Fixed biasing on = bias regulation loop deactivated
+      
+      ICPSEL:
+        msb: 19
+        lsb: 17
+        access: RW
+        reset: 4
+        desc: >
+          Select charge pump current.
+          0d … 40 µA
+          1d … 80 µA
+          2d … 120 µA
+          3d … 160 µA
+          4d … 200 µA (default)
+          5d … 240 µA
+          6d-7d … 280 µA
+      
+      LOCKFORC:
+        msb: 16
+        lsb: 16
+        access: RW
+        reset: 1
+        desc: >
+          Force lock signal to high.
+          0b … Lock signal not forced
+          1b … Lock forced to high
+      
+      LOCKSEL:
+        msb: 15
+        lsb: 13
+        access: RW
+        reset: 3
+        desc: >
+          Select lock detection range/window.
+          0d … 265 ps
+          1d … 500 ps
+          2d … 1 ns
+          3d … 1.5 ns (default)
+          4d … 2 ns
+          5d … 2.8 ns
+          6d … 3.8 ns
+          7d … 4.6 ns
+      
+      RSVD:
+        msb: 12
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: "Reserved - Read as 0b, must be written with 0b"
+      
+      RLFSEL:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Select Rlf inside the loop filter.
+          0b … Rlf = 5 kOhm (default)
+          1b … Rlf = 7 kOhm
+      
+      RFILTSEL:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 1
+        desc: >
+          Select Rfilt of the reference filter.
+          0d … Rfilt = 100 kOhm
+          1d … Rfilt = 1 MOhm (default)
+      
+      VREFSEL:
+        msb: 9
+        lsb: 8
+        access: RW
+        reset: 1
+        desc: >
+          Select reference voltage/common mode level of loop filter.
+          0d … 433 mV
+          1d … 506 mV (default)
+          2d … 578 mV
+          3d … 650 mV
+      
+      U2IEN:
+        msb: 7
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: >
+          Enable voltage-to-current-converter.
+          0b … Off (default)
+          1b … On
+      
+      BGAPEN:
+        msb: 6
+        lsb: 6
+        access: RW
+        reset: 0
+        desc: >
+          Enable bandgap reference.
+          0b … Off (default)
+          1b … On
+      
+      VDIGREG:
+        msb: 5
+        lsb: 4
+        access: RW
+        reset: 2
+        desc: >
+          Program output voltage of dig-regulator.
+          0d … 1.44 V
+          1d … 1.5 V
+          2d … 1.55 V (default)
+          3d … 1.60 V (@Vbg=1.2V)
+      
+      DIGPON:
+        msb: 3
+        lsb: 3
+        access: RW
+        reset: 0
+        desc: >
+          Enable dig-regulator.
+          0b … Power off (default)
+          1b … Power on
+      
+      VANAREG:
+        msb: 2
+        lsb: 1
+        access: RW
+        reset: 2
+        desc: >
+          Program output voltage of ana-regulator.
+          0d … 1.44 V
+          1d … 1.5 V
+          2d … 1.55 V (default)
+          3d … 1.60 V (@Vbg=1.2V)
+      
+      ANAPON:
+        msb: 0
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Enable analog-regulator.
+          0b … Power off (default)
+          1b … Power on
+
+  # PACR2 Register
+  PACR2:
+    addr: 0x05
+    width: 24
+    desc: "PLL analog control register 2"
+    reset: 0x000014
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      DTSEL:
+        msb: 19
+        lsb: 18
+        access: RW
+        reset: 1
+        desc: >
+          Set PFD dead time / dead zone.
+          0d … 180 ps to 350 ps
+          1d … 270 ps to 510 ps (default)
+          2d … 360 ps to 680 ps
+          3d … 450 ps to 840 ps
+      
+      TRIVREG:
+        msb: 17
+        lsb: 17
+        access: RW
+        reset: 0
+        desc: >
+          Set regulator off-state to tristate.
+          0b … Off state is 0.0V (default)
+          1b … Off state is to tristate
+      
+      FSDNTMR:
+        msb: 16
+        lsb: 8
+        access: RW
+        reset: 0
+        desc: >
+          Defines time for PLL loop filter discharge during fast down chirp operation.
+          When FSTDNTMR = 0d and FSTDNEN ≠ 0d, fast down chirp length is internally assigned.
+          0d … 500 ns if FSTDNEN = 1d (discharge of loop filter to reference voltage)
+          0d … 700 ns if FSTDNEN = 2d (discharge in defined time window)
+          0d … 300 ns if FSTDNEN = 3d
+          For FSTDNTMR > 0d: TSYS_CLK × (FSDNTMR+1)
+      
+      FSTDNEN:
+        msb: 7
+        lsb: 6
+        access: RW
+        reset: 0
+        desc: >
+          Fast down chirp enable.
+          00b … Disable (default)
+          01b … Enable fast down chirp (mode 1)
+          10b … Enable fast down chirp (mode 2)
+          11b … Enable fast down chirp (mode 3)
+      
+      DIVEN:
+        msb: 5
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: >
+          Enable divider.
+          0b … Off: Input clock of divider and 80 MHz clock gated
+          1b … On: clocks released
+      
+      DIVSET:
+        msb: 4
+        lsb: 0
+        access: RW
+        reset: 20
+        desc: >
+          Set fixed part of integer division factor (consider offset of 2).
+          Default = 20d for 80 MHz system clock.
+          21d should be used for 76.8 MHz system clock.
+
+  # SFCTL Register
+  SFCTL:
+    addr: 0x06
+    width: 24
+    desc: "SPI and FIFO Control Register"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 19
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      PREFIX_EN:
+        msb: 18
+        lsb: 18
+        access: RW
+        reset: 0
+        desc: >
+          Enables data header written into FIFO prior to sampling data of each chirp.
+          0b … No prefix data header prior to chirp data
+          1b … Prefix data header added prior to chirp data
+      
+      LFSR_EN:
+        msb: 17
+        lsb: 17
+        access: RW
+        reset: 0
+        desc: >
+          Enable LFSR register data generation.
+          0b … Normal data acquisition, LFSR reset
+          1b … LFSR data generation started
+      
+      MISO_HS_RD:
+        msb: 16
+        lsb: 16
+        access: RW
+        reset: 1
+        desc: >
+          MISO data timing.
+          0b … MISO data sent with falling edge of SPI CLK
+          1b … MISO data sent with rising edge (½ cycle earlier)
+      
+      RSVD2:
+        msb: 15
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      FIFO_LP_MODE:
+        msb: 13
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: >
+          FIFO power mode.
+          0b … FIFO permanently enabled
+          1b … FIFO activated dynamically
+      
+      FIFO_CREF:
+        msb: 12
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          FIFO compare reference for interrupt and CREF reporting.
+          0d … minimum value, interrupt generated when first sample written
+          8191d … maximum value when FIFO is full with 8192 memory locations
+
+  # SADC_CTRL Register
+  SADC_CTRL:
+    addr: 0x07
+    width: 24
+    desc: "Sensor ADC control register"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 17
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      TC_TRIM:
+        msb: 16
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: >
+          Bandgap trim value.
+          0d … Min. trim value
+          7d … Max. trim value
+      
+      DSCAL:
+        msb: 13
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: >
+          Disable startup calibration.
+          0b … Startup calibration enabled
+          1b … Startup calibration disabled
+      
+      LVGAIN:
+        msb: 12
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Sample configuration for LV channels.
+          0b … Gain = 1.0
+          1b … Gain = 0.75
+      
+      SESP:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Spreaded early sampling point enable.
+          0b … Disabled
+          1b … Enabled
+      
+      OVERS_CFG:
+        msb: 10
+        lsb: 9
+        access: RW
+        reset: 0
+        desc: >
+          Oversampling configuration.
+          0d … No oversampling → 8 bits resolution
+          1d … Oversampling by 2
+          2d … Oversampling by 4 → 9 bits resolution
+          3d … Oversampling by 32 → 10 bits resolution
+      
+      SD_EN:
+        msb: 8
+        lsb: 8
+        access: RW
+        reset: 0
+        desc: >
+          Sigma delta loop enable.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD2:
+        msb: 7
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      SADC_START:
+        msb: 4
+        lsb: 4
+        access: W
+        reset: 0
+        desc: >
+          SADC trigger.
+          1b … Trigger SADC to start measurement
+          0b … Default value or after trigger captured
+      
+      SADC_CHSEL:
+        msb: 3
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Analog multiplexer input for channel selection.
+          0d … Temperature Sensor
+          1d … RSVD
+          2d … Temperature Sensor reference
+          3d … pd_outx
+          4d … pd_out
+          5d … ifx_mix3
+          6d … if_mix3
+          7d … ifx_mix2
+          8d … if_mix2
+          9d … ifx_mix1
+          10d … if_mix1
+          11-15d … RSVD
+
+  # Channel Set Registers (CSx)
+  CSI_0:
+    addr: 0x08
+    width: 24
+    desc: "Channel set idle mode 0"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 21
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      BBCHGLOB_EN:
+        msb: 20
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Enables baseband chain together with BBCH_SEL.
+          0b … Baseband channels disabled
+          1b … Baseband channels enabled
+      
+      RSVD2:
+        msb: 19
+        lsb: 18
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RX3MIX_EN:
+        msb: 17
+        lsb: 17
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch3.
+          0b … Disabled
+          1b … Enabled
+      
+      RX3LOBUF_EN:
+        msb: 16
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch3.
+          0b … Disabled
+          1b … Enabled
+      
+      RX2MIX_EN:
+        msb: 15
+        lsb: 15
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch2.
+          0b … Disabled
+          1b … Enabled
+      
+      RX2LOBUF_EN:
+        msb: 14
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch2.
+          0b … Disabled
+          1b … Enabled
+      
+      RX1MIX_EN:
+        msb: 13
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch1.
+          0b … Disabled
+          1b … Enabled
+      
+      RX1LOBUF_EN:
+        msb: 12
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch1.
+          0b … Disabled
+          1b … Enabled
+      
+      LO_DIST1_EN:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator distribution buffer to RX2 and TX channels.
+          0b … Disabled
+          1b … Enabled
+      
+      LO_DIST2_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator distribution buffer to RX1 and RX3 channels.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD3:
+        msb: 9
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      FDIV_EN:
+        msb: 6
+        lsb: 6
+        access: RW
+        reset: 0
+        desc: >
+          Enable VCO frequency divider.
+          0b … Disable DIV output
+          1b … Enable DIV output
+      
+      TEST_DIV_EN:
+        msb: 5
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: >
+          Frequency divider test control bit.
+          0b … Disable divider
+          1b … Enable divider
+      
+      VCO_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enable VCO.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD4:
+        msb: 3
+        lsb: 2
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      PD_EN:
+        msb: 1
+        lsb: 1
+        access: RW
+        reset: 0
+        desc: >
+          Enable power detector from TX.
+          0b … Disabled
+          1b … Enabled
+      
+      TX_EN:
+        msb: 0
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Enable DAC and power amplifier of TX.
+          0b … Disabled
+          1b … Enabled
+
+  # CSI_1 - Channel Set Idle Mode 1
+  CSI_1:
+    addr: 0x09
+    width: 24
+    desc: "Channel set idle mode 1"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 23
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      BBCH_SEL:
+        msb: 22
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Enable baseband filters, amplifiers and ADCs on channel BBCHx.
+          BBCHx = 0d … channel disabled
+          BBCHx = 1d … channel enabled
+          CSx#1[22] … BBCH3, CSx#1[21] … BBCH2, CSx#1[20] … BBCH1
+      
+      BB_RSTCNT:
+        msb: 19
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: >
+          Baseband reset timer counter value for analog baseband amplifiers.
+          BB_RSTCNT = TBBRST * fSYS_CLK
+          0d … No analog baseband reset
+          1d … Min. reset time is TBBRST = 12.5 ns
+          127d … Max. reset counter, TBBRST = 1.5875 µs
+      
+      TEMP_MEAS_EN:
+        msb: 12
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Enables temperature sensor.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD2:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      MADC_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Enable three channel ADC module at once.
+          0b … ADC module powered down
+          1b … ADC module powered up
+      
+      RSVD3:
+        msb: 9
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      TX_DAC:
+        msb: 4
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          TX power setting.
+          0d … Min. TX output power
+          31d … Max. TX output power
+
+  # CSI_2 - Channel Set Idle Mode 2
+  CSI_2:
+    addr: 0x0A
+    width: 24
+    desc: "Channel set idle mode 2"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 23
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      HP_GAIN:
+        msb: 22
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Set gain of first stage.
+          HPF GAIN[x] = 1d … 18 dB Gain
+          HPF GAIN[x] = 0d … 30 dB gain
+          bit20→ch1, bit21→ch2, bit22→ch3
+      
+      RSVD2:
+        msb: 19
+        lsb: 15
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      VGA_GAIN3:
+        msb: 14
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 3.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL3:
+        msb: 11
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 3 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+      
+      VGA_GAIN2:
+        msb: 9
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 2.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL2:
+        msb: 6
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 2 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+      
+      VGA_GAIN1:
+        msb: 4
+        lsb: 2
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 1.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL1:
+        msb: 1
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 1 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+
+  # Channel Set Control Registers
+  CSCI:
+    addr: 0x0B
+    width: 24
+    desc: "Channel set control idle mode"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: "Reserved - Channel set control for idle mode"
+
+  # Channel Set Deep Sleep Mode Registers
+  CSDS_0:
+    addr: 0x0C
+    width: 24
+    desc: "Channel set deep sleep mode 0"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 21
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      BBCHGLOB_EN:
+        msb: 20
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Enables baseband chain together with BBCH_SEL.
+          0b … Baseband channels disabled
+          1b … Baseband channels enabled
+      
+      RSVD2:
+        msb: 19
+        lsb: 18
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RX3MIX_EN:
+        msb: 17
+        lsb: 17
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch3.
+          0b … Disabled
+          1b … Enabled
+      
+      RX3LOBUF_EN:
+        msb: 16
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch3.
+          0b … Disabled
+          1b … Enabled
+      
+      RX2MIX_EN:
+        msb: 15
+        lsb: 15
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch2.
+          0b … Disabled
+          1b … Enabled
+      
+      RX2LOBUF_EN:
+        msb: 14
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch2.
+          0b … Disabled
+          1b … Enabled
+      
+      RX1MIX_EN:
+        msb: 13
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch1.
+          0b … Disabled
+          1b … Enabled
+      
+      RX1LOBUF_EN:
+        msb: 12
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch1.
+          0b … Disabled
+          1b … Enabled
+      
+      LO_DIST1_EN:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator distribution buffer to RX2 and TX channels.
+          0b … Disabled
+          1b … Enabled
+      
+      LO_DIST2_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator distribution buffer to RX1 and RX3 channels.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD3:
+        msb: 9
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      FDIV_EN:
+        msb: 6
+        lsb: 6
+        access: RW
+        reset: 0
+        desc: >
+          Enable VCO frequency divider.
+          0b … Disable DIV output
+          1b … Enable DIV output
+      
+      TEST_DIV_EN:
+        msb: 5
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: >
+          Frequency divider test control bit.
+          0b … Disable divider
+          1b … Enable divider
+      
+      VCO_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enable VCO.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD4:
+        msb: 3
+        lsb: 2
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      PD_EN:
+        msb: 1
+        lsb: 1
+        access: RW
+        reset: 0
+        desc: >
+          Enable power detector from TX.
+          0b … Disabled
+          1b … Enabled
+      
+      TX_EN:
+        msb: 0
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Enable DAC and power amplifier of TX.
+          0b … Disabled
+          1b … Enabled
+
+  CSDS_1:
+    addr: 0x0D
+    width: 24
+    desc: "Channel set deep sleep mode 1"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 23
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      BBCH_SEL:
+        msb: 22
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Enable baseband filters, amplifiers and ADCs on channel BBCHx.
+          BBCHx = 0d … channel disabled
+          BBCHx = 1d … channel enabled
+          CSx#1[22] … BBCH3, CSx#1[21] … BBCH2, CSx#1[20] … BBCH1
+      
+      BB_RSTCNT:
+        msb: 19
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: >
+          Baseband reset timer counter value for analog baseband amplifiers.
+          BB_RSTCNT = TBBRST * fSYS_CLK
+          0d … No analog baseband reset
+          1d … Min. reset time is TBBRST = 12.5 ns
+          127d … Max. reset counter, TBBRST = 1.5875 µs
+      
+      TEMP_MEAS_EN:
+        msb: 12
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Enables temperature sensor.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD2:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      MADC_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Enable three channel ADC module at once.
+          0b … ADC module powered down
+          1b … ADC module powered up
+      
+      RSVD3:
+        msb: 9
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      TX_DAC:
+        msb: 4
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          TX power setting.
+          0d … Min. TX output power
+          31d … Max. TX output power
+
+  CSDS_2:
+    addr: 0x0E
+    width: 24
+    desc: "Channel set deep sleep mode 2"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 23
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      HP_GAIN:
+        msb: 22
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Set gain of first stage.
+          HPF GAIN[x] = 1d … 18 dB Gain
+          HPF GAIN[x] = 0d … 30 dB gain
+          bit20→ch1, bit21→ch2, bit22→ch3
+      
+      RSVD2:
+        msb: 19
+        lsb: 15
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      VGA_GAIN3:
+        msb: 14
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 3.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL3:
+        msb: 11
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 3 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+      
+      VGA_GAIN2:
+        msb: 9
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 2.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL2:
+        msb: 6
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 2 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+      
+      VGA_GAIN1:
+        msb: 4
+        lsb: 2
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 1.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL1:
+        msb: 1
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 1 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+
+  CSCDS:
+    addr: 0x0F
+    width: 24
+    desc: "Channel set control deep sleep mode"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: "Reserved - Deep sleep mode control"
+
+  # Channel Set Up/Down Chirp Mode Registers
+  CSU_0:
+    addr: 0x10
+    width: 24
+    desc: "Channel set control register upchirp #0"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 21
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      BBCHGLOB_EN:
+        msb: 20
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Enables baseband chain together with BBCH_SEL.
+          0b … Baseband channels disabled
+          1b … Baseband channels enabled
+      
+      RSVD2:
+        msb: 19
+        lsb: 18
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RX3MIX_EN:
+        msb: 17
+        lsb: 17
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch3.
+          0b … Disabled
+          1b … Enabled
+      
+      RX3LOBUF_EN:
+        msb: 16
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch3.
+          0b … Disabled
+          1b … Enabled
+      
+      RX2MIX_EN:
+        msb: 15
+        lsb: 15
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch2.
+          0b … Disabled
+          1b … Enabled
+      
+      RX2LOBUF_EN:
+        msb: 14
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch2.
+          0b … Disabled
+          1b … Enabled
+      
+      RX1MIX_EN:
+        msb: 13
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch1.
+          0b … Disabled
+          1b … Enabled
+      
+      RX1LOBUF_EN:
+        msb: 12
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch1.
+          0b … Disabled
+          1b … Enabled
+      
+      LO_DIST1_EN:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator distribution buffer to RX2 and TX channels.
+          0b … Disabled
+          1b … Enabled
+      
+      LO_DIST2_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator distribution buffer to RX1 and RX3 channels.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD3:
+        msb: 9
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      FDIV_EN:
+        msb: 6
+        lsb: 6
+        access: RW
+        reset: 0
+        desc: >
+          Enable VCO frequency divider.
+          0b … Disable DIV output
+          1b … Enable DIV output
+      
+      TEST_DIV_EN:
+        msb: 5
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: >
+          Frequency divider test control bit.
+          0b … Disable divider
+          1b … Enable divider
+      
+      VCO_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enable VCO.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD4:
+        msb: 3
+        lsb: 2
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      PD_EN:
+        msb: 1
+        lsb: 1
+        access: RW
+        reset: 0
+        desc: >
+          Enable power detector from TX.
+          0b … Disabled
+          1b … Enabled
+      
+      TX_EN:
+        msb: 0
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Enable DAC and power amplifier of TX.
+          0b … Disabled
+          1b … Enabled
+
+  CSU_1:
+    addr: 0x11
+    width: 24
+    desc: "Channel set control register upchirp #1"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 23
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      BBCH_SEL:
+        msb: 22
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Enable baseband filters, amplifiers and ADCs on channel BBCHx.
+          BBCHx = 0d … channel disabled
+          BBCHx = 1d … channel enabled
+          CSx#1[22] … BBCH3, CSx#1[21] … BBCH2, CSx#1[20] … BBCH1
+      
+      BB_RSTCNT:
+        msb: 19
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: >
+          Baseband reset timer counter value for analog baseband amplifiers.
+          BB_RSTCNT = TBBRST * fSYS_CLK
+          0d … No analog baseband reset
+          1d … Min. reset time is TBBRST = 12.5 ns
+          127d … Max. reset counter, TBBRST = 1.5875 µs
+      
+      TEMP_MEAS_EN:
+        msb: 12
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Enables temperature sensor.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD2:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      MADC_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Enable three channel ADC module at once.
+          0b … ADC module powered down
+          1b … ADC module powered up
+      
+      RSVD3:
+        msb: 9
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      TX_DAC:
+        msb: 4
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          TX power setting.
+          0d … Min. TX output power
+          31d … Max. TX output power
+
+  CSU_2:
+    addr: 0x12
+    width: 24
+    desc: "Channel set control register upchirp #2"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 23
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      HP_GAIN:
+        msb: 22
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Set gain of first stage.
+          HPF GAIN[x] = 1d … 18 dB Gain
+          HPF GAIN[x] = 0d … 30 dB gain
+          bit20→ch1, bit21→ch2, bit22→ch3
+      
+      RSVD2:
+        msb: 19
+        lsb: 15
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      VGA_GAIN3:
+        msb: 14
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 3.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL3:
+        msb: 11
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 3 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+      
+      VGA_GAIN2:
+        msb: 9
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 2.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL2:
+        msb: 6
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 2 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+      
+      VGA_GAIN1:
+        msb: 4
+        lsb: 2
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 1.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL1:
+        msb: 1
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 1 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+
+
+  CSD_0:
+    addr: 0x14
+    width: 24
+    desc: "Channel set control register downchirp #0"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 21
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      BBCHGLOB_EN:
+        msb: 20
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Enables baseband chain together with BBCH_SEL.
+          0b … Baseband channels disabled
+          1b … Baseband channels enabled
+      
+      RSVD2:
+        msb: 19
+        lsb: 18
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RX3MIX_EN:
+        msb: 17
+        lsb: 17
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch3.
+          0b … Disabled
+          1b … Enabled
+      
+      RX3LOBUF_EN:
+        msb: 16
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch3.
+          0b … Disabled
+          1b … Enabled
+      
+      RX2MIX_EN:
+        msb: 15
+        lsb: 15
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch2.
+          0b … Disabled
+          1b … Enabled
+      
+      RX2LOBUF_EN:
+        msb: 14
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch2.
+          0b … Disabled
+          1b … Enabled
+      
+      RX1MIX_EN:
+        msb: 13
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: >
+          Enable mixer on ch1.
+          0b … Disabled
+          1b … Enabled
+      
+      RX1LOBUF_EN:
+        msb: 12
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator buffer to mixer on ch1.
+          0b … Disabled
+          1b … Enabled
+      
+      LO_DIST1_EN:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator distribution buffer to RX2 and TX channels.
+          0b … Disabled
+          1b … Enabled
+      
+      LO_DIST2_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Enable local oscillator distribution buffer to RX1 and RX3 channels.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD3:
+        msb: 9
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      FDIV_EN:
+        msb: 6
+        lsb: 6
+        access: RW
+        reset: 0
+        desc: >
+          Enable VCO frequency divider.
+          0b … Disable DIV output
+          1b … Enable DIV output
+      
+      TEST_DIV_EN:
+        msb: 5
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: >
+          Frequency divider test control bit.
+          0b … Disable divider
+          1b … Enable divider
+      
+      VCO_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enable VCO.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD4:
+        msb: 3
+        lsb: 2
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      PD_EN:
+        msb: 1
+        lsb: 1
+        access: RW
+        reset: 0
+        desc: >
+          Enable power detector from TX.
+          0b … Disabled
+          1b … Enabled
+      
+      TX_EN:
+        msb: 0
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Enable DAC and power amplifier of TX.
+          0b … Disabled
+          1b … Enabled
+
+  CSD_1:
+    addr: 0x15
+    width: 24
+    desc: "Channel set control register downchirp #1"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 23
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      BBCH_SEL:
+        msb: 22
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Enable baseband filters, amplifiers and ADCs on channel BBCHx.
+          BBCHx = 0d … channel disabled
+          BBCHx = 1d … channel enabled
+          CSx#1[22] … BBCH3, CSx#1[21] … BBCH2, CSx#1[20] … BBCH1
+      
+      BB_RSTCNT:
+        msb: 19
+        lsb: 13
+        access: RW
+        reset: 0
+        desc: >
+          Baseband reset timer counter value for analog baseband amplifiers.
+          BB_RSTCNT = TBBRST * fSYS_CLK
+          0d … No analog baseband reset
+          1d … Min. reset time is TBBRST = 12.5 ns
+          127d … Max. reset counter, TBBRST = 1.5875 µs
+      
+      TEMP_MEAS_EN:
+        msb: 12
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Enables temperature sensor.
+          0b … Disabled
+          1b … Enabled
+      
+      RSVD2:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      MADC_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Enable three channel ADC module at once.
+          0b … ADC module powered down
+          1b … ADC module powered up
+      
+      RSVD3:
+        msb: 9
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      TX_DAC:
+        msb: 4
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          TX power setting.
+          0d … Min. TX output power
+          31d … Max. TX output power
+
+  CSD_2:
+    addr: 0x16
+    width: 24
+    desc: "Channel set control register downchirp #2"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 23
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      HP_GAIN:
+        msb: 22
+        lsb: 20
+        access: RW
+        reset: 0
+        desc: >
+          Set gain of first stage.
+          HPF GAIN[x] = 1d … 18 dB Gain
+          HPF GAIN[x] = 0d … 30 dB gain
+          bit20→ch1, bit21→ch2, bit22→ch3
+      
+      RSVD2:
+        msb: 19
+        lsb: 15
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      VGA_GAIN3:
+        msb: 14
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 3.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL3:
+        msb: 11
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 3 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+      
+      VGA_GAIN2:
+        msb: 9
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 2.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL2:
+        msb: 6
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 2 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+      
+      VGA_GAIN1:
+        msb: 4
+        lsb: 2
+        access: RW
+        reset: 0
+        desc: >
+          VGA gain setting channel 1.
+          0d … 0 dB gain
+          1d … 5 dB gain
+          2d … 10 dB gain
+          3d … 15 dB gain
+          4d … 20 dB gain
+          5d … 25 dB gain
+      
+      HPF_SEL1:
+        msb: 1
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          High pass filter channel 1 cutoff setting.
+          0d … 20 kHz
+          1d … 45 kHz
+          2d … 70 kHz
+          3d … 80 kHz
+
+  
+  # Channel Set Control Registers for Up/Down Chirp Modes
+  CSC1:
+    addr: 0x18
+    width: 24
+    desc: "Channel set control 1 (up/down)"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: "Reserved - Up/down chirp mode control 1"
+
+  CSC2:
+    addr: 0x19
+    width: 24
+    desc: "Channel set control 2 (up/down)"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: "Reserved - Up/down chirp mode control 2"
+
+  CSC3:
+    addr: 0x1A
+    width: 24
+    desc: "Channel set control 3 (up/down)"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: "Reserved - Up/down chirp mode control 3"
+
+  CSC4:
+    addr: 0x1B
+    width: 24
+    desc: "Channel set control 4 (up/down)"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: "Reserved - Up/down chirp mode control 4"
+
+  # Additional Channel Set Control Registers (BGT60ATR24C addresses)
+  CS2:
+    addr: 0x1D
+    width: 24
+    desc: "Channel set control 2 (up/down) - Address 0x1D"
+    reset: 0x000480
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      PLL_ISOPD:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 1
+        desc: >
+          Isolation pin to disable the PLL.
+          0b … PLL connected
+          1b … PLL isolated
+      
+      BG_TMRF_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Required for temperature sensor readout.
+          0b … Disabled
+          1b … Enabled
+      
+      SADC_ISOPD:
+        msb: 9
+        lsb: 9
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the sensor ADC.
+          0b … SADC connected
+          1b … SADC isolated
+      
+      MADC_ISOPD:
+        msb: 8
+        lsb: 8
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the MADC.
+          0b … MADC connected
+          1b … MADC isolated
+      
+      BG_EN:
+        msb: 7
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: >
+          Enable bandgap in MADC.
+          0b … Disabled
+          1b … Enabled
+      
+      RF_ISOPD:
+        msb: 6
+        lsb: 6
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the RF block.
+          0b … RF connected
+          1b … RF isolated
+      
+      ABB_ISOPD:
+        msb: 5
+        lsb: 5
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the analog baseband (BB) block.
+          0b … BB connected
+          1b … BB isolated
+      
+      CS_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enable channel set usage.
+          0b … CS not used
+          1b … CS used
+          Note: In case of CSCI or CSCDS this bit is ignored.
+      
+      REPC:
+        msb: 3
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Repetition factor for the channel set: R_C = 2^REPC.
+          0d … 1 repetition
+          1d … 2 repetitions
+          …
+          15d … 32768 repetitions
+          Note: In case of CSCI or CSCDS this bit is ignored.
+
+  CS3:
+    addr: 0x24
+    width: 24
+    desc: "Channel set control 3 (up/down) - Address 0x24"
+    reset: 0x000480
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      PLL_ISOPD:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 1
+        desc: >
+          Isolation pin to disable the PLL.
+          0b … PLL connected
+          1b … PLL isolated
+      
+      BG_TMRF_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Required for temperature sensor readout.
+          0b … Disabled
+          1b … Enabled
+      
+      SADC_ISOPD:
+        msb: 9
+        lsb: 9
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the sensor ADC.
+          0b … SADC connected
+          1b … SADC isolated
+      
+      MADC_ISOPD:
+        msb: 8
+        lsb: 8
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the MADC.
+          0b … MADC connected
+          1b … MADC isolated
+      
+      BG_EN:
+        msb: 7
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: >
+          Enable bandgap in MADC.
+          0b … Disabled
+          1b … Enabled
+      
+      RF_ISOPD:
+        msb: 6
+        lsb: 6
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the RF block.
+          0b … RF connected
+          1b … RF isolated
+      
+      ABB_ISOPD:
+        msb: 5
+        lsb: 5
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the analog baseband (BB) block.
+          0b … BB connected
+          1b … BB isolated
+      
+      CS_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enable channel set usage.
+          0b … CS not used
+          1b … CS used
+          Note: In case of CSCI or CSCDS this bit is ignored.
+      
+      REPC:
+        msb: 3
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Repetition factor for the channel set: R_C = 2^REPC.
+          0d … 1 repetition
+          1d … 2 repetitions
+          …
+          15d … 32768 repetitions
+          Note: In case of CSCI or CSCDS this bit is ignored.
+
+  CS4:
+    addr: 0x2B
+    width: 24
+    desc: "Channel set control 4 (up/down) - Address 0x2B"
+    reset: 0x000480
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      PLL_ISOPD:
+        msb: 11
+        lsb: 11
+        access: RW
+        reset: 1
+        desc: >
+          Isolation pin to disable the PLL.
+          0b … PLL connected
+          1b … PLL isolated
+      
+      BG_TMRF_EN:
+        msb: 10
+        lsb: 10
+        access: RW
+        reset: 0
+        desc: >
+          Required for temperature sensor readout.
+          0b … Disabled
+          1b … Enabled
+      
+      SADC_ISOPD:
+        msb: 9
+        lsb: 9
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the sensor ADC.
+          0b … SADC connected
+          1b … SADC isolated
+      
+      MADC_ISOPD:
+        msb: 8
+        lsb: 8
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the MADC.
+          0b … MADC connected
+          1b … MADC isolated
+      
+      BG_EN:
+        msb: 7
+        lsb: 7
+        access: RW
+        reset: 0
+        desc: >
+          Enable bandgap in MADC.
+          0b … Disabled
+          1b … Enabled
+      
+      RF_ISOPD:
+        msb: 6
+        lsb: 6
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the RF block.
+          0b … RF connected
+          1b … RF isolated
+      
+      ABB_ISOPD:
+        msb: 5
+        lsb: 5
+        access: RW
+        reset: 1
+        desc: >
+          Enable isolation of all control signals towards the analog baseband (BB) block.
+          0b … BB connected
+          1b … BB isolated
+      
+      CS_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enable channel set usage.
+          0b … CS not used
+          1b … CS used
+          Note: In case of CSCI or CSCDS this bit is ignored.
+      
+      REPC:
+        msb: 3
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Repetition factor for the channel set: R_C = 2^REPC.
+          0d … 1 repetition
+          1d … 2 repetitions
+          …
+          15d … 32768 repetitions
+          Note: In case of CSCI or CSCDS this bit is ignored.
+
+  # Chirp Control Registers
+  CCR0:
+    addr: 0x2C
+    width: 24
+    desc: "Chirp control register 0"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 1
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      CONT_MODE:
+        msb: 0
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Continuous mode enable.
+          0b … After last frame, FSM goes to specified power down mode and stops
+          1b … After last frame, FSM goes to specified power down mode and after T_FED runs next frames
+
+  CCR1:
+    addr: 0x2D
+    width: 24
+    desc: "Chirp control register 1"
+    reset: 0x000000
+    fields:
+      TR_FED_MUL:
+        msb: 23
+        lsb: 19
+        access: RW
+        reset: 0
+        desc: >
+          Timer multiplier factor for frame end delay T_FED.
+          Precise timing provided under CCR1:TR_FED.
+          Note: only values TR_FED_MUL<= 10D are verified.
+      
+      TR_FED:
+        msb: 18
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_FED:
+          0D … TSYS_CLK
+          From 1D to 255D the time delay T_FED is calculated as follows:
+          T_FED = (TR_FED x 2^TR_FED_MUL x 8 + TR_FED_MUL + 3) x TSYS_CLK
+      
+      PD_MODE:
+        msb: 10
+        lsb: 9
+        access: RW
+        reset: 0
+        desc: >
+          After last RT repetition the chip enters this power mode for the time T_FED:
+          0D … Keep power mode same (CSx, CSCx)
+          1D … Idle Mode (CSI + CSCI)
+          2D … Deep Sleep Mode (CSDS + CSCDS)
+          3D … RSVD
+      
+      TR_START:
+        msb: 8
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_START. T_START Ramp Start Delay defines the waiting time before generation of the ramp.
+          T_START= (TR_START x 8 +10) x TSYS_CLK:
+          0D … 10* TSYS_CLK
+          511D … Max. delay
+
+  CCR2:
+    addr: 0x2E
+    width: 24
+    desc: "Chirp control register 2"
+    reset: 0x000000
+    fields:
+      FRAME_LEN:
+        msb: 23
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Frame Length specifies the number of shape groups in a frame.
+          When specified frame length is reached frame counter will be incremented
+          and shape group counter reset:
+          0D: 1 shape group
+          1D: 2 shape group
+          4095D: Max. value (=4096)
+      
+      MAX_FRAME_CNT:
+        msb: 11
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Maximum number of frames to be executed. Upon reaching MAX_FRAME_CNT
+          value, shape generation will stop and the chip will go into deep sleep
+          power mode. A new frame can only be triggered after a reset (e.g., FSM_RESET).
+          Frame generation can also be stopped at any time by an FSM reset
+          (MAIN: FSM_RESET):
+          0D: Endless generation
+          1D: 1 frame will be generated
+          4095D: Max. number of frames generated (=4095)
+
+  CCR3:
+    addr: 0x2F
+    width: 24
+    desc: "Chirp control register 3"
+    reset: 0x000000
+    fields:
+      TR_INIT0_MUL:
+        msb: 23
+        lsb: 22
+        access: RW
+        reset: 0
+        desc: >
+          Timer multiplier for delay T_INIT0.
+          Precise timing provided under CCR3:TR_INIT0.
+      
+      TR_INIT0:
+        msb: 21
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_INIT0.
+          0d … TSYS_CLK
+          From 1d to 255d the time delay for T_INIT0 is calculated as follows:
+          T_INIT0 = (TR_INIT0 × 2^TR_INIT0_MUL × 8 + TR_INIT0_MUL + 3) × TSYS_CLK
+      
+      TR_SSTART:
+        msb: 13
+        lsb: 9
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_SSTART. T_SSTART Sampling Start Delay Time after PA enable until 1st trigger to MADC.
+          T_SSTART = (TR_SSTART × 8 + 1) × TSYS_CLK:
+          0d … TSYS_CLK
+          31d … Max. delay
+      
+      TR_PAEN:
+        msb: 8
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_PAEN. T_PAEN Delay Time after PLL Start to PA enable. T_PAEN = TR_PAEN × 8 × TSYS_CLK:
+          0d … Reserved
+          1d … Min. delay
+          511d … Max. delay
+
+  # PLL Shape Registers
+  PLL1_0:
+    addr: 0x30
+    width: 24
+    desc: "FSU1 - shape 1 frequency start up"
+    reset: 0x000000
+    fields:
+      FSU1:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Chirp Start Freq Upchirp. SDM start frequency for the ramp generator.
+          Signed 2's complement number in range [-2^23 ... (2^23 - 1)].
+          f_RF = 8 * f_SYSCLK * [4(N_DIVST + 2) + 8 + N_FSU/2^20]
+
+  PLL1_1:
+    addr: 0x31
+    width: 24
+    desc: "RSU1 - shape 1 ramp slope up"
+    reset: 0x000000
+    fields:
+      RSU1:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Step Upchirp. A ramp step is the RF frequency difference added to the actual frequency during single clock cycle time of TSYS_CLK = 12.5 ns.
+          Signed 2's complement number in range [-2^23 ... (2^23 - 1)].
+          Δf_RF = 8 * f_SYSCLK * N_RSU/2^20
+
+  PLL1_2:
+    addr: 0x32
+    width: 24
+    desc: "RTU1 - shape 1 ramp time up"
+    reset: 0x000000
+    fields:
+      TR_EDU1:
+        msb: 23
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_EDU. T_EDU is End of Chirp Delay applied after every Upchirp.
+          If TR_EDU = 0: T_EDU = 2 × TSYS_CLK.
+          If TR_EDU > 0: T_EDU = (8 × TR_EDU + 5) × TSYS_CLK.
+          255d … Max. delay
+      
+      RSVD:
+        msb: 15
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RTU1:
+        msb: 13
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Time Upchirp. RTU defines the number of clock cycles for the Upchirp.
+          The actual ramp time is T_RAMP = RTU × 8 × TSYS_CLK:
+          0d … Timer disabled
+          1d … T_RAMP = 100 ns
+          16383d … T_RAMP = 2^14 × 100 ns = 1.6383 ms
+
+  PLL1_3:
+    addr: 0x33
+    width: 24
+    desc: "AP1 - shape 1 acquisition points up"
+    reset: 0x000000
+    fields:
+      APD1:
+        msb: 23
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Number of samples for Downchirp for the results of a single ADC:
+          0d … No sampling during chirp
+          1d … Number of samples = 1
+          4095d … Max. number of samples is 4095
+      
+      APU1:
+        msb: 11
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Number of samples for Upchirp for the results of a single ADC:
+          0d … No sampling during chirp
+          1d … Number of samples = 1
+          4095d … Max. number of samples is 4095
+
+  PLL1_4:
+    addr: 0x34
+    width: 24
+    desc: "FSD1 - shape 1 frequency start down"
+    reset: 0x000000
+    fields:
+      FSD1:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Chirp Start Freq Downchirp. SDM start frequency for the ramp generator.
+          FSD = 0d for saw-tooth shape.
+          In case FSD=0, RSD=0, and RTD=0, then the fast saw-tooth shape is enabled.
+          In all other cases the triangular shape is enabled.
+
+  PLL1_5:
+    addr: 0x35
+    width: 24
+    desc: "RSD1 - shape 1 ramp slope down"
+    reset: 0x000000
+    fields:
+      RSD1:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Step Downchirp. A ramp step is the RF frequency difference added to the actual frequency during single clock cycle time of TSYS_CLK = 12.5 ns.
+          Bit(23) represents the sign for the ramp:
+          0d … Upchirp
+          1d … Downchirp
+
+  PLL1_6:
+    addr: 0x36
+    width: 24
+    desc: "RTD1 - shape 1 ramp time down"
+    reset: 0x000000
+    fields:
+      TR_EDD1:
+        msb: 23
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_EDD. T_EDD is End of Chirp Delay applied after every Downchirp.
+          If TR_EDD = 0: T_EDD = 2 × TSYS_CLK.
+          If TR_EDD > 0: T_EDD = (8 × TR_EDD + 5) × TSYS_CLK.
+          255d … Max. delay
+      
+      RSVD:
+        msb: 15
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RTD1:
+        msb: 13
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Time Downchirp. RTD defines the number of clock cycles for the Downchirp.
+          The actual ramp time is T_RAMP = RTD × 8 × TSYS_CLK:
+          0d … Timer disabled. Disabling the timer is useful when doing Downchirp operation with fast down chirp enabled.
+          1d … T_RAMP = 100 ns
+          16383d … T_RAMP = 2^14 × 100 ns = 1.6383 ms
+
+  PLL1_7:
+    addr: 0x37
+    width: 24
+    desc: "SCR - shape 1 shape control register"
+    reset: 0x000000
+    fields:
+      TR_SED_MUL:
+        msb: 23
+        lsb: 19
+        access: RW
+        reset: 0
+        desc: >
+          Timer multiplier factor for shape end delay T_SED.
+          Precise timing provided under PLL1_7:TR_SED.
+          Note: only values TR_SED_MUL <= 10d are verified.
+      
+      TR_SED:
+        msb: 18
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_SED:
+          0d … TSYS_CLK
+          From 1d to 255d the time delay T_SED is calculated as follows:
+          T_SED = (TR_SED × 2^TR_SED_MUL × 8 + TR_SED_MUL + 3) × TSYS_CLK
+      
+      PD_MODE:
+        msb: 10
+        lsb: 9
+        access: RW
+        reset: 0
+        desc: >
+          After last shape repetition, FSM goes to a specified Power Down Mode:
+          0d … Keep power mode same (CSx, CSCx)
+          1d … Idle Mode (CSI + CSCI)
+          2d … Deep Sleep Mode (CSDS + CSCDS)
+          3d … Reserved
+      
+      CONT_MODE:
+        msb: 8
+        lsb: 8
+        access: RW
+        reset: 0
+        desc: >
+          After last shape repetition REPS, FSM:
+          0b … goes to a specified Power Down Mode and stops immediately
+          1b … goes to a specified Power Down Mode and after T_SED it runs the next shapes
+      
+      RSVD:
+        msb: 7
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      SH_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enables the specific shape 1:
+          0b … shape is not used regardless of shape parameters PLL1[0-6] are programmed with values different from default value.
+          1b … shape is used
+      
+      REPS:
+        msb: 3
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Repetition factor for a single shape 1: RS1 = 2^REPS1:
+          0d … RS1 = 1 repetition
+          1d … RS1 = 2 repetitions
+          2d … RS1 = 4 repetitions
+          15d … RS1 = 32768 repetitions
+
+  # PLL2 Registers (Shape 2)
+  PLL2_0:
+    addr: 0x38
+    width: 24
+    desc: "FSU2 - shape 2 frequency start up"
+    reset: 0x000000
+    fields:
+      FSU2:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Chirp Start Freq Upchirp. SDM start frequency for the ramp generator.
+          Signed 2's complement number in range [-2^23 ... (2^23 - 1)].
+          f_RF = 8 * f_SYSCLK * [4(N_DIVST + 2) + 8 + N_FSU/2^20]
+
+  PLL2_1:
+    addr: 0x39
+    width: 24
+    desc: "RSU2 - shape 2 ramp slope up"
+    reset: 0x000000
+    fields:
+      RSU2:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Step Upchirp. A ramp step is the RF frequency difference added to the actual frequency during single clock cycle time of TSYS_CLK = 12.5 ns.
+          Signed 2's complement number in range [-2^23 ... (2^23 - 1)].
+          Δf_RF = 8 * f_SYSCLK * N_RSU/2^20
+
+  PLL2_2:
+    addr: 0x3A
+    width: 24
+    desc: "RTU2 - shape 2 ramp time up"
+    reset: 0x000000
+    fields:
+      TR_EDU2:
+        msb: 23
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_EDU. T_EDU is End of Chirp Delay applied after every Upchirp.
+          If TR_EDU = 0: T_EDU = 2 × TSYS_CLK.
+          If TR_EDU > 0: T_EDU = (8 × TR_EDU + 5) × TSYS_CLK.
+          255d … Max. delay
+      
+      RSVD:
+        msb: 15
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RTU2:
+        msb: 13
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Time Upchirp. RTU defines the number of clock cycles for the Upchirp.
+          The actual ramp time is T_RAMP = RTU × 8 × TSYS_CLK:
+          0d … Timer disabled
+          1d … T_RAMP = 100 ns
+          16383d … T_RAMP = 2^14 × 100 ns = 1.6383 ms
+
+  PLL2_3:
+    addr: 0x3B
+    width: 24
+    desc: "AP2 - shape 2 acquisition points"
+    reset: 0x000000
+    fields:
+      APD2:
+        msb: 23
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Number of samples for Downchirp for the results of a single ADC:
+          0d … No sampling during chirp
+          1d … Number of samples = 1
+          4095d … Max. number of samples is 4095
+      
+      APU2:
+        msb: 11
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Number of samples for Upchirp for the results of a single ADC:
+          0d … No sampling during chirp
+          1d … Number of samples = 1
+          4095d … Max. number of samples is 4095
+
+  PLL2_4:
+    addr: 0x3C
+    width: 24
+    desc: "FSD2 - shape 2 frequency start down"
+    reset: 0x000000
+    fields:
+      FSD2:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Chirp Start Freq Downchirp. SDM start frequency for the ramp generator.
+          FSD = 0d for saw-tooth shape.
+          In case FSD=0, RSD=0, and RTD=0, then the fast saw-tooth shape is enabled.
+          In all other cases the triangular shape is enabled.
+
+  PLL2_5:
+    addr: 0x3D
+    width: 24
+    desc: "RSD2 - shape 2 ramp slope down"
+    reset: 0x000000
+    fields:
+      RSD2:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Step Downchirp. A ramp step is the RF frequency difference added to the actual frequency during single clock cycle time of TSYS_CLK = 12.5 ns.
+          Bit(23) represents the sign for the ramp:
+          0d … Upchirp
+          1d … Downchirp
+
+  PLL2_6:
+    addr: 0x3E
+    width: 24
+    desc: "RTD2 - shape 2 ramp time down"
+    reset: 0x000000
+    fields:
+      TR_EDD2:
+        msb: 23
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_EDD. T_EDD is End of Chirp Delay applied after every Downchirp.
+          If TR_EDD = 0: T_EDD = 2 × TSYS_CLK.
+          If TR_EDD > 0: T_EDD = (8 × TR_EDD + 5) × TSYS_CLK.
+          255d … Max. delay
+      
+      RSVD:
+        msb: 15
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RTD2:
+        msb: 13
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Time Downchirp. RTD defines the number of clock cycles for the Downchirp.
+          The actual ramp time is T_RAMP = RTD × 8 × TSYS_CLK:
+          0d … Timer disabled. Disabling the timer is useful when doing Downchirp operation with fast down chirp enabled.
+          1d … T_RAMP = 100 ns
+          16383d … T_RAMP = 2^14 × 100 ns = 1.6383 ms
+
+  PLL2_7:
+    addr: 0x3F
+    width: 24
+    desc: "SCR2 - shape 2 shape control register"
+    reset: 0x000000
+    fields:
+      TR_SED_MUL:
+        msb: 23
+        lsb: 19
+        access: RW
+        reset: 0
+        desc: >
+          Timer multiplier factor for shape end delay T_SED.
+          Precise timing provided under PLL2_7:TR_SED.
+          Note: only values TR_SED_MUL <= 10d are verified.
+      
+      TR_SED:
+        msb: 18
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_SED:
+          0d … TSYS_CLK
+          From 1d to 255d the time delay T_SED is calculated as follows:
+          T_SED = (TR_SED × 2^TR_SED_MUL × 8 + TR_SED_MUL + 3) × TSYS_CLK
+      
+      PD_MODE:
+        msb: 10
+        lsb: 9
+        access: RW
+        reset: 0
+        desc: >
+          After last shape repetition, FSM goes to a specified Power Down Mode:
+          0d … Keep power mode same (CSx, CSCx)
+          1d … Idle Mode (CSI + CSCI)
+          2d … Deep Sleep Mode (CSDS + CSCDS)
+          3d … Reserved
+      
+      CONT_MODE:
+        msb: 8
+        lsb: 8
+        access: RW
+        reset: 0
+        desc: >
+          After last shape repetition REPS, FSM:
+          0b … goes to a specified Power Down Mode and stops immediately
+          1b … goes to a specified Power Down Mode and after T_SED it runs the next shapes
+      
+      RSVD:
+        msb: 7
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      SH_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enables the specific shape 2:
+          0b … shape is not used regardless of shape parameters PLL2[0-6] are programmed with values different from default value.
+          1b … shape is used
+      
+      REPS:
+        msb: 3
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Repetition factor for a single shape 2: RS2 = 2^REPS2:
+          0d … RS2 = 1 repetition
+          1d … RS2 = 2 repetitions
+          2d … RS2 = 4 repetitions
+          15d … RS2 = 32768 repetitions
+
+  # PLL3 Registers (Shape 3)
+  PLL3_0:
+    addr: 0x40
+    width: 24
+    desc: "FSU3 - shape 3 frequency start up"
+    reset: 0x000000
+    fields:
+      FSU3:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Chirp Start Freq Upchirp. SDM start frequency for the ramp generator.
+          Signed 2's complement number in range [-2^23 ... (2^23 - 1)].
+          f_RF = 8 * f_SYSCLK * [4(N_DIVST + 2) + 8 + N_FSU/2^20]
+
+  PLL3_1:
+    addr: 0x41
+    width: 24
+    desc: "RSU3 - shape 3 ramp slope up"
+    reset: 0x000000
+    fields:
+      RSU3:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Step Upchirp. A ramp step is the RF frequency difference added to the actual frequency during single clock cycle time of TSYS_CLK = 12.5 ns.
+          Signed 2's complement number in range [-2^23 ... (2^23 - 1)].
+          Δf_RF = 8 * f_SYSCLK * N_RSU/2^20
+
+  PLL3_2:
+    addr: 0x42
+    width: 24
+    desc: "RTU3 - shape 3 ramp time up"
+    reset: 0x000000
+    fields:
+      TR_EDU3:
+        msb: 23
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_EDU. T_EDU is End of Chirp Delay applied after every Upchirp.
+          If TR_EDU = 0: T_EDU = 2 × TSYS_CLK.
+          If TR_EDU > 0: T_EDU = (8 × TR_EDU + 5) × TSYS_CLK.
+          255d … Max. delay
+      
+      RSVD:
+        msb: 15
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RTU3:
+        msb: 13
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Time Upchirp. RTU defines the number of clock cycles for the Upchirp.
+          The actual ramp time is T_RAMP = RTU × 8 × TSYS_CLK:
+          0d … Timer disabled
+          1d … T_RAMP = 100 ns
+          16383d … T_RAMP = 2^14 × 100 ns = 1.6383 ms
+
+  PLL3_3:
+    addr: 0x43
+    width: 24
+    desc: "AP3 - shape 3 acquisition points"
+    reset: 0x000000
+    fields:
+      APD3:
+        msb: 23
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Number of samples for Downchirp for the results of a single ADC:
+          0d … No sampling during chirp
+          1d … Number of samples = 1
+          4095d … Max. number of samples is 4095
+      
+      APU3:
+        msb: 11
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Number of samples for Upchirp for the results of a single ADC:
+          0d … No sampling during chirp
+          1d … Number of samples = 1
+          4095d … Max. number of samples is 4095
+
+  PLL3_4:
+    addr: 0x44
+    width: 24
+    desc: "FSD3 - shape 3 frequency start down"
+    reset: 0x000000
+    fields:
+      FSD3:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Chirp Start Freq Downchirp. SDM start frequency for the ramp generator.
+          FSD = 0d for saw-tooth shape.
+          In case FSD=0, RSD=0, and RTD=0, then the fast saw-tooth shape is enabled.
+          In all other cases the triangular shape is enabled.
+
+  PLL3_5:
+    addr: 0x45
+    width: 24
+    desc: "RSD3 - shape 3 ramp slope down"
+    reset: 0x000000
+    fields:
+      RSD3:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Step Downchirp. A ramp step is the RF frequency difference added to the actual frequency during single clock cycle time of TSYS_CLK = 12.5 ns.
+          Bit(23) represents the sign for the ramp:
+          0d … Upchirp
+          1d … Downchirp
+
+  PLL3_6:
+    addr: 0x46
+    width: 24
+    desc: "RTD3 - shape 3 ramp time down"
+    reset: 0x000000
+    fields:
+      TR_EDD3:
+        msb: 23
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_EDD. T_EDD is End of Chirp Delay applied after every Downchirp.
+          If TR_EDD = 0: T_EDD = 2 × TSYS_CLK.
+          If TR_EDD > 0: T_EDD = (8 × TR_EDD + 5) × TSYS_CLK.
+          255d … Max. delay
+      
+      RSVD:
+        msb: 15
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RTD3:
+        msb: 13
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Time Downchirp. RTD defines the number of clock cycles for the Downchirp.
+          The actual ramp time is T_RAMP = RTD × 8 × TSYS_CLK:
+          0d … Timer disabled. Disabling the timer is useful when doing Downchirp operation with fast down chirp enabled.
+          1d … T_RAMP = 100 ns
+          16383d … T_RAMP = 2^14 × 100 ns = 1.6383 ms
+
+  PLL3_7:
+    addr: 0x47
+    width: 24
+    desc: "SCR3 - shape 3 shape control register"
+    reset: 0x000000
+    fields:
+      TR_SED_MUL:
+        msb: 23
+        lsb: 19
+        access: RW
+        reset: 0
+        desc: >
+          Timer multiplier factor for shape end delay T_SED.
+          Precise timing provided under PLL3_7:TR_SED.
+          Note: only values TR_SED_MUL <= 10d are verified.
+      
+      TR_SED:
+        msb: 18
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_SED:
+          0d … TSYS_CLK
+          From 1d to 255d the time delay T_SED is calculated as follows:
+          T_SED = (TR_SED × 2^TR_SED_MUL × 8 + TR_SED_MUL + 3) × TSYS_CLK
+      
+      PD_MODE:
+        msb: 10
+        lsb: 9
+        access: RW
+        reset: 0
+        desc: >
+          After last shape repetition, FSM goes to a specified Power Down Mode:
+          0d … Keep power mode same (CSx, CSCx)
+          1d … Idle Mode (CSI + CSCI)
+          2d … Deep Sleep Mode (CSDS + CSCDS)
+          3d … Reserved
+      
+      CONT_MODE:
+        msb: 8
+        lsb: 8
+        access: RW
+        reset: 0
+        desc: >
+          After last shape repetition REPS, FSM:
+          0b … goes to a specified Power Down Mode and stops immediately
+          1b … goes to a specified Power Down Mode and after T_SED it runs the next shapes
+      
+      RSVD:
+        msb: 7
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      SH_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enables the specific shape 3:
+          0b … shape is not used regardless of shape parameters PLL3[0-6] are programmed with values different from default value.
+          1b … shape is used
+      
+      REPS:
+        msb: 3
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Repetition factor for a single shape 3: RS3 = 2^REPS3:
+          0d … RS3 = 1 repetition
+          1d … RS3 = 2 repetitions
+          2d … RS3 = 4 repetitions
+          15d … RS3 = 32768 repetitions
+
+  # PLL4 Registers (Shape 4)
+  PLL4_0:
+    addr: 0x48
+    width: 24
+    desc: "FSU4 - shape 4 frequency start up"
+    reset: 0x000000
+    fields:
+      FSU4:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Chirp Start Freq Upchirp. SDM start frequency for the ramp generator.
+          Signed 2's complement number in range [-2^23 ... (2^23 - 1)].
+          f_RF = 8 * f_SYSCLK * [4(N_DIVST + 2) + 8 + N_FSU/2^20]
+
+  PLL4_1:
+    addr: 0x49
+    width: 24
+    desc: "RSU4 - shape 4 ramp slope up"
+    reset: 0x000000
+    fields:
+      RSU4:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Step Upchirp. A ramp step is the RF frequency difference added to the actual frequency during single clock cycle time of TSYS_CLK = 12.5 ns.
+          Signed 2's complement number in range [-2^23 ... (2^23 - 1)].
+          Δf_RF = 8 * f_SYSCLK * N_RSU/2^20
+
+  PLL4_2:
+    addr: 0x4A
+    width: 24
+    desc: "RTU4 - shape 4 ramp time up"
+    reset: 0x000000
+    fields:
+      TR_EDU4:
+        msb: 23
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_EDU. T_EDU is End of Chirp Delay applied after every Upchirp.
+          If TR_EDU = 0: T_EDU = 2 × TSYS_CLK.
+          If TR_EDU > 0: T_EDU = (8 × TR_EDU + 5) × TSYS_CLK.
+          255d … Max. delay
+      
+      RSVD:
+        msb: 15
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RTU4:
+        msb: 13
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Time Upchirp. RTU defines the number of clock cycles for the Upchirp.
+          The actual ramp time is T_RAMP = RTU × 8 × TSYS_CLK:
+          0d … Timer disabled
+          1d … T_RAMP = 100 ns
+          16383d … T_RAMP = 2^14 × 100 ns = 1.6383 ms
+
+  PLL4_3:
+    addr: 0x4B
+    width: 24
+    desc: "AP4 - shape 4 acquisition points"
+    reset: 0x000000
+    fields:
+      APD4:
+        msb: 23
+        lsb: 12
+        access: RW
+        reset: 0
+        desc: >
+          Number of samples for Downchirp for the results of a single ADC:
+          0d … No sampling during chirp
+          1d … Number of samples = 1
+          4095d … Max. number of samples is 4095
+      
+      APU4:
+        msb: 11
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Number of samples for Upchirp for the results of a single ADC:
+          0d … No sampling during chirp
+          1d … Number of samples = 1
+          4095d … Max. number of samples is 4095
+
+  PLL4_4:
+    addr: 0x4C
+    width: 24
+    desc: "FSD4 - shape 4 frequency start down"
+    reset: 0x000000
+    fields:
+      FSD4:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Chirp Start Freq Downchirp. SDM start frequency for the ramp generator.
+          FSD = 0d for saw-tooth shape.
+          In case FSD=0, RSD=0, and RTD=0, then the fast saw-tooth shape is enabled.
+          In all other cases the triangular shape is enabled.
+
+  PLL4_5:
+    addr: 0x4D
+    width: 24
+    desc: "RSD4 - shape 4 ramp slope down"
+    reset: 0x000000
+    fields:
+      RSD4:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Step Downchirp. A ramp step is the RF frequency difference added to the actual frequency during single clock cycle time of TSYS_CLK = 12.5 ns.
+          Bit(23) represents the sign for the ramp:
+          0d … Upchirp
+          1d … Downchirp
+
+  PLL4_6:
+    addr: 0x4E
+    width: 24
+    desc: "RTD4 - shape 4 ramp time down"
+    reset: 0x000000
+    fields:
+      TR_EDD4:
+        msb: 23
+        lsb: 16
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_EDD. T_EDD is End of Chirp Delay applied after every Downchirp.
+          If TR_EDD = 0: T_EDD = 2 × TSYS_CLK.
+          If TR_EDD > 0: T_EDD = (8 × TR_EDD + 5) × TSYS_CLK.
+          255d … Max. delay
+      
+      RSVD:
+        msb: 15
+        lsb: 14
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      RTD4:
+        msb: 13
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Ramp Time Downchirp. RTD defines the number of clock cycles for the Downchirp.
+          The actual ramp time is T_RAMP = RTD × 8 × TSYS_CLK:
+          0d … Timer disabled. Disabling the timer is useful when doing Downchirp operation with fast down chirp enabled.
+          1d … T_RAMP = 100 ns
+          16383d … T_RAMP = 2^14 × 100 ns = 1.6383 ms
+
+  PLL4_7:
+    addr: 0x4F
+    width: 24
+    desc: "SCR4 - shape 4 shape control register"
+    reset: 0x000000
+    fields:
+      TR_SED_MUL:
+        msb: 23
+        lsb: 19
+        access: RW
+        reset: 0
+        desc: >
+          Timer multiplier factor for shape end delay T_SED.
+          Precise timing provided under PLL4_7:TR_SED.
+          Note: only values TR_SED_MUL <= 10d are verified.
+      
+      TR_SED:
+        msb: 18
+        lsb: 11
+        access: RW
+        reset: 0
+        desc: >
+          Coefficient to calculate T_SED:
+          0d … TSYS_CLK
+          From 1d to 255d the time delay T_SED is calculated as follows:
+          T_SED = (TR_SED × 2^TR_SED_MUL × 8 + TR_SED_MUL + 3) × TSYS_CLK
+      
+      PD_MODE:
+        msb: 10
+        lsb: 9
+        access: RW
+        reset: 0
+        desc: >
+          After last shape repetition, FSM goes to a specified Power Down Mode:
+          0d … Keep power mode same (CSx, CSCx)
+          1d … Idle Mode (CSI + CSCI)
+          2d … Deep Sleep Mode (CSDS + CSCDS)
+          3d … Reserved
+      
+      CONT_MODE:
+        msb: 8
+        lsb: 8
+        access: RW
+        reset: 0
+        desc: >
+          After last shape repetition REPS, FSM:
+          0b … goes to a specified Power Down Mode and stops immediately
+          1b … goes to a specified Power Down Mode and after T_SED it runs the next shapes
+      
+      RSVD:
+        msb: 7
+        lsb: 5
+        access: RW
+        reset: 0
+        desc: "Reserved"
+      
+      SH_EN:
+        msb: 4
+        lsb: 4
+        access: RW
+        reset: 0
+        desc: >
+          Enables the specific shape 4:
+          0b … shape is not used regardless of shape parameters PLL4[0-6] are programmed with values different from default value.
+          1b … shape is used
+      
+      REPS:
+        msb: 3
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: >
+          Repetition factor for a single shape 4: RS4 = 2^REPS4:
+          0d … RS4 = 1 repetition
+          1d … RS4 = 2 repetitions
+          2d … RS4 = 4 repetitions
+          15d … RS4 = 32768 repetitions
+
+  # RF Test and Design for Test Registers
+  RFT1:
+    addr: 0x56
+    width: 24
+    desc: "RF test register 1 - Reserved"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: "Reserved register - should not be modified"
+
+  SDFT0:
+    addr: 0x5B
+    width: 24
+    desc: "Design for test register 0 - Address 0x5B"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 0
+        access: RW
+        reset: 0
+        desc: "Reserved - Design for test register"
+
+  # Status and Result Registers
+  STAT0:
+    addr: 0x5D
+    width: 24
+    desc: "Status register 0"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 14
+        access: R
+        reset: 0
+        desc: "Reserved"
+      
+      SH_IDX:
+        msb: 13
+        lsb: 11
+        access: R
+        reset: 0
+        desc: >
+          Actual chirp shape enabled by the FSM:
+          0d … PLLU1
+          1d … PLLD1
+          2d … PLLU2
+          3d … PLLD2
+          4d … PLLU3
+          5d … PLLD3
+          6d … PLLU4
+          7d … PLLD4
+      
+      CH_IDX:
+        msb: 10
+        lsb: 8
+        access: R
+        reset: 0
+        desc: >
+          Actual channel set enabled by the FSM:
+          0d … CSU1
+          1d … CSD1
+          2d … CSU2
+          3d … CSD2
+          4d … CSU3
+          5d … CSD3
+          6d … CSU4
+          7d … CSD4
+      
+      PM:
+        msb: 7
+        lsb: 5
+        access: R
+        reset: 5
+        desc: >
+          Power Mode is the current power mode status of FSM:
+          1d … Active Mode
+          2d … Interchirp Mode
+          3d … Idle Mode
+          5d … Deep Sleep Mode
+          0d,4d,6d,7d … Reserved
+      
+      RSVD2:
+        msb: 4
+        lsb: 4
+        access: R
+        reset: 0
+        desc: "Reserved"
+      
+      LDO_RDY:
+        msb: 3
+        lsb: 3
+        access: R
+        reset: 0
+        desc: >
+          LDO output level, i.e., VDDC above the threshold:
+          0b … LDO output level below threshold
+          1b … LDO output level above threshold, ready
+      
+      MADC_BGUP:
+        msb: 2
+        lsb: 2
+        access: R
+        reset: 0
+        desc: >
+          MADC bandgap reference power up status:
+          0b … Status down
+          1b … Up and running
+      
+      MADC_RDY:
+        msb: 1
+        lsb: 1
+        access: R
+        reset: 0
+        desc: >
+          MADC status:
+          0b … Status down
+          1b … Up and running
+      
+      SADC_RDY:
+        msb: 0
+        lsb: 0
+        access: R
+        reset: 0
+        desc: >
+          SADC startup / calibration status:
+          0b … Status down
+          1b … Up and running
+
+  SADC_RESULT:
+    addr: 0x5E
+    width: 24
+    desc: "Sensor ADC result register"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 22
+        access: R
+        reset: 0
+        desc: "Reserved"
+      
+      SADC_RAW:
+        msb: 21
+        lsb: 12
+        access: R
+        reset: 0
+        desc: "SADC Raw data (for test only)"
+      
+      RSVD2:
+        msb: 11
+        lsb: 11
+        access: R
+        reset: 0
+        desc: "Reserved"
+      
+      SADC_BUSY:
+        msb: 10
+        lsb: 10
+        access: R
+        reset: 0
+        desc: >
+          Shows if SADC is busy:
+          0b … SADC not busy
+          1b … SADC busy
+      
+      SADC_RESULT:
+        msb: 9
+        lsb: 0
+        access: R
+        reset: 0
+        desc: >
+          10 bits measurement result.
+          In case just 8 bits are converted, the 8 bits value is left shifted by two (multiplied by 4).
+          In case 9 bits are converted, the 9 bits result is left-shifted by 1 (multiplied by 2).
+
+  FSTAT:
+    addr: 0x5F
+    width: 24
+    desc: "FIFO status register"
+    reset: 0x000000
+    fields:
+      FOF_ERR:
+        msb: 23
+        lsb: 23
+        access: R
+        reset: 0
+        desc: >
+          FIFO overflow error bit shows if more sample data are transferred to the FIFO than FIFO memory locations are available to store the data.
+          0b … No FIFO overflow
+          1b … FIFO had an overflow condition
+      
+      FULL:
+        msb: 22
+        lsb: 22
+        access: R
+        reset: 0
+        desc: >
+          The FULL bit shows if the FIFO has fully filled up:
+          0b … FIFO is not full
+          1b … FIFO is full
+      
+      CREF:
+        msb: 21
+        lsb: 21
+        access: R
+        reset: 0
+        desc: >
+          0b … FIFO filling status below CREF
+          1b … FIFO filling status is > CREF
+      
+      EMPTY:
+        msb: 20
+        lsb: 20
+        access: R
+        reset: 1
+        desc: >
+          The FIFO empty bit EMPTY signals if the FIFO is empty:
+          0b … FIFO stores at least one sample
+          1b … FIFO is empty
+      
+      FUF_ERR:
+        msb: 19
+        lsb: 19
+        access: R
+        reset: 0
+        desc: >
+          FIFO underflow error signals if the host was reading more sampling data from the FIFO than available.
+          0b … No error
+          1b … FIFO underflow occurred
+      
+      SPI_BURST_ERR:
+        msb: 18
+        lsb: 18
+        access: R
+        reset: 0
+        desc: >
+          In case of burst error this bit is set:
+          0b … No error
+          1b … Burst error occurred. Bit will be reset after HW or SW reset condition.
+      
+      CLK_NUM_ERR:
+        msb: 17
+        lsb: 17
+        access: R
+        reset: 0
+        desc: >
+          Clock number error bit is set when SPI clocks do not fit the expected clock cycles:
+          0b … No error
+          1b … Error occurred. Bit will be reset after HW or SW reset condition.
+      
+      RSVD:
+        msb: 16
+        lsb: 14
+        access: R
+        reset: 0
+        desc: "Reserved"
+      
+      FILL_STATUS:
+        msb: 13
+        lsb: 0
+        access: R
+        reset: 0
+        desc: >
+          FIFO filling status:
+          0x0 … FIFO empty
+          0x1000 … FIFO 50% filled
+          0x2000 … FIFO full
+          This bit field is for debugging only. It should not be evaluated while the MADC sampling and filling up the FIFO.
+          It can be evaluated when the FSM status is held, for example, after an FSM reset or in a specific power mode e.g., Deep Sleep.
+
+  # FIFO Access Registers
+  FIFO_ACCESS:
+    addr: 0x60
+    width: 24
+    desc: "FIFO access register"
+    reset: 0x000000
+    fields:
+      FIFO_DATA:
+        msb: 23
+        lsb: 0
+        access: R
+        reset: 0
+        desc: >
+          FIFO data access.
+          Reading from addresses >= 0x60 accesses the FIFO data.
+          Each FIFO word contains 24 bits of data.
+
+  # GSR0 - Global Status Register
+  GSR0:
+    addr: 0x62
+    width: 24
+    desc: "Global status register"
+    reset: 0x000000
+    fields:
+      RSVD:
+        msb: 23
+        lsb: 4
+        access: R
+        reset: 0
+        desc: "Reserved"
+      
+      FOU_ERR:
+        msb: 3
+        lsb: 3
+        access: R
+        reset: 0
+        desc: >
+          Shows if FIFO overflow or underflow condition occurred.
+          The error will be cleared after the following resets: FIFO reset or SW reset or HW reset:
+          1b … Error condition occurred
+          0b … No error
+      
+      MISO_HS_READ:
+        msb: 2
+        lsb: 2
+        access: R
+        reset: 1
+        desc: "SPI: MISO high speed mode activated"
+      
+      SPI_BURST_ERR:
+        msb: 1
+        lsb: 1
+        access: R
+        reset: 0
+        desc: >
+          SPI burst error, defined within the SPI spec:
+          0b … No burst read/write error
+          1b … Burst error
+      
+      CLOCK_NUMBER_ERROR:
+        msb: 0
+        lsb: 0
+        access: R
+        reset: 0
+        desc: >
+          Defined within the SPI Spec:
+          0b … No clock number error
+          1b … Error condition occurred

@@ -1,0 +1,231 @@
+# Hardware Specifications
+
+## BGT60TR13C Detailed Specifications
+
+### RF Characteristics
+
+| Parameter | Min | Typ | Max | Unit | Notes |
+|-----------|-----|-----|-----|------|-------|
+| **Frequency Range** | 58.0 | 60.5 | 63.5 | GHz | K-band |
+| **TX Output Power** | -10 | 0 | +4 | dBm | At antenna port |
+| **TX Power Control** | | | 31 | steps | 5-bit DAC |
+| **RX Noise Figure** | | 13 | 15 | dB | |
+| **RX Gain Control** | 0 | | 30 | dB | Programmable VGA |
+| **Phase Noise** | | -100 | | dBc/Hz | @ 1 MHz offset |
+
+### ADC Specifications
+
+| Parameter | Value | Unit | Notes |
+|-----------|-------|------|-------|
+| **Resolution** | 11 | bit | Effective |
+| **Sample Rate** | 1 - 4 | Msps | Configurable |
+| **Channels** | 3 | | One per RX |
+| **Input Range** | | | | Matched to baseband |
+| **Oversampling** | 0, 2, 4, 32 | | Configurable |
+
+### Digital Interface
+
+| Interface | Specification | Notes |
+|-----------|---------------|-------|
+| **SPI** | Mode 0 (CPOL=0, CPHA=0) | Standard SPI |
+| **SPI Clock** | Up to 50 MHz | Tested on RPi 5 |
+| **Data Width** | 24-bit registers | Read/Write |
+| **FIFO Depth** | 8192 samples | Shared across channels |
+| **Interrupt** | GPIO output | Frame/FIFO events |
+
+### Power Specifications
+
+| Mode | Typical Current | Supply Voltage | Notes |
+|------|----------------|----------------|-------|
+| **Active (TX+RX)** | 180 | 3.3V | Full operation |
+| **Interchirp** | 80 | 3.3V | Between chirps |
+| **Idle** | 30 | 3.3V | Quick wake |
+| **Deep Sleep** | 2 | 3.3V | Ultra-low power |
+
+Total power: ~0.6W during active operation
+
+### Timing Specifications
+
+| Parameter | Min | Typ | Max | Unit | Notes |
+|-----------|-----|-----|-----|------|-------|
+| **System Clock** | | 80 | | MHz | Internal |
+| **PLL Lock Time** | | 300 | 500 | μs | Frequency dependent |
+| **Chirp Duration** | 100 | | 1638 | μs | Programmable |
+| **Frame Rate** | | | 1000 | FPS | Application limited |
+| **Wake-up Time (Idle)** | | 1 | | ms | |
+| **Wake-up Time (Deep Sleep)** | | 10 | | ms | |
+
+### Environmental Specifications
+
+| Parameter | Min | Typ | Max | Unit |
+|-----------|-----|-----|-----|------|
+| **Operating Temperature** | -40 | +25 | +85 | °C |
+| **Storage Temperature** | -55 | | +125 | °C |
+| **Humidity** | | | 95 | % RH |
+
+## Antenna Specifications
+
+### TX Antenna
+
+| Parameter | Value | Unit | Notes |
+|-----------|-------|------|-------|
+| **Gain** | 5 | dBi | Typical on-chip |
+| **Beamwidth (H-plane)** | 90 | degrees | Approximate |
+| **Beamwidth (E-plane)** | 90 | degrees | Approximate |
+| **Polarization** | Linear | | |
+
+### RX Antennas (3 channels)
+
+| Parameter | Value | Unit | Notes |
+|-----------|-------|------|-------|
+| **Gain** | 5 | dBi | Per channel |
+| **Spacing** | λ/2 | | ~2.5 mm at 60 GHz |
+| **Isolation** | >20 | dB | Between channels |
+| **3dB Beamwidth** | 90 | degrees | Approximate |
+
+## Performance Metrics
+
+### Range Performance
+
+| Configuration | Maximum Range | Range Resolution | Notes |
+|---------------|---------------|------------------|-------|
+| **Short Range** | 2 m | 3 cm | 5 GHz BW |
+| **Medium Range** | 5-10 m | 3 cm | 5 GHz BW |
+| **Long Range** | 15 m | 5 cm | 3 GHz BW |
+
+Range depends on:
+- Target radar cross-section (RCS)
+- TX power setting
+- ADC sample rate
+- Chirp bandwidth
+
+### Velocity Measurement
+
+| Parameter | Value | Unit | Notes |
+|-----------|-------|------|-------|
+| **Maximum Velocity** | ±10 | m/s | At 60 GHz |
+| **Velocity Resolution** | 0.1 | m/s | Frame rate dependent |
+
+Velocity range and resolution depend on:
+- Frame rate
+- Number of chirps per frame
+- Carrier frequency
+
+### Angle Measurement
+
+With 3 RX channels (MIMO configuration):
+
+| Parameter | Value | Unit | Notes |
+|-----------|-------|------|-------|
+| **Azimuth FOV** | ±45 | degrees | Typical |
+| **Azimuth Resolution** | 15-30 | degrees | Processing dependent |
+| **Elevation** | Limited | | 1D array |
+
+## Register Map Summary
+
+The BGT60TR13C has 83 addressable 24-bit registers:
+
+| Register Range | Purpose |
+|----------------|---------|
+| **0x00-0x07** | Main control, ADC, SADC, FIFO |
+| **0x08-0x0B** | Channel Set Idle (CSI) |
+| **0x0C-0x0F** | Channel Set Deep Sleep (CSDS) |
+| **0x10-0x1B** | Channel Sets Up/Down Chirp (CSU/CSD/CSC) |
+| **0x2C-0x2F** | Chirp Control Registers (CCR) |
+| **0x30-0x4F** | PLL Shapes 1-4 (frequency, ramp, timing) |
+| **0x5D-0x62** | Status registers (STAT, FSTAT, GSR) |
+
+See [Register Map](register-map) for complete documentation.
+
+## Chip Variants
+
+| Part Number | TX | RX | Package | Notes |
+|-------------|----|----|---------|-------|
+| **BGT60TR13C** | 1 | 3 | VQFN48 | Standard |
+| BGT60TR11D | 1 | 1 | VQFN32 | Single RX |
+| BGT60ATR24C | 1 | 3 | VQFN48 | Automotive grade |
+
+PiRadar is designed for the **BGT60TR13C** variant used in the Dreamhat.
+
+## Regulatory Compliance
+
+The 60 GHz band is unlicensed in many regions:
+
+- **USA (FCC)**: 57-64 GHz unlicensed
+- **Europe (ETSI)**: 57-66 GHz (EN 302 567)
+- **Japan (ARIB)**: 57-66 GHz
+- **China**: 59-64 GHz
+
+**Note**: Check local regulations for specific power limits and restrictions.
+
+## Mechanical Specifications
+
+### Dreamhat Dimensions
+
+| Parameter | Value | Unit |
+|-----------|-------|------|
+| **Length** | 65 | mm |
+| **Width** | 56.5 | mm |
+| **Height** | 15 | mm |
+| **Weight** | ~20 | g |
+| **Mounting** | 40-pin GPIO | Raspberry Pi compatible |
+
+### Operating Orientation
+
+The radar works best when:
+- Mounted horizontally
+- Antenna facing target area
+- Unobstructed line-of-sight
+
+## Recommended Operating Conditions
+
+### Power Supply
+
+- **Voltage**: 5V via Raspberry Pi 40-pin header
+- **Current**: Supplied through 3.3V rail
+- **Recommended PSU**: 3A minimum for Raspberry Pi 5 + Dreamhat
+
+### Cooling
+
+- **Passive Cooling**: Adequate for normal operation
+- **Active Cooling**: Recommended for continuous operation in warm environments
+- **Heat Sink**: Optional, can be attached to Raspberry Pi
+
+### Installation Guidelines
+
+1. **Avoid Metal Obstacles**: Keep 10+ cm clear in front of antenna
+2. **Stable Mount**: Minimize vibration
+3. **Temperature**: Operate in 0-50°C range for best performance
+4. **Cable Management**: Keep SPI/GPIO connections short and secure
+
+## Accuracy and Calibration
+
+### Factory Calibration
+
+The BGT60TR13C is factory-calibrated for:
+- PLL frequency accuracy
+- ADC linearity
+- Temperature compensation
+
+No user calibration typically required.
+
+### Measurement Accuracy
+
+| Parameter | Accuracy | Notes |
+|-----------|----------|-------|
+| **Range** | ±5 cm | Typical |
+| **Velocity** | ±0.2 m/s | Doppler-based |
+| **Angle** | ±10° | MIMO processing dependent |
+
+Accuracy depends on:
+- Signal-to-noise ratio
+- Target characteristics
+- Environmental conditions
+- Processing algorithms
+
+## Next Steps
+
+- [Configuration Guide](configuration)
+- [Register Map](register-map)
+- [Examples](examples)
+

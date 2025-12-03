@@ -1,0 +1,198 @@
+# Package Structure
+
+This document describes the refactored package structure that separates hardware-dependent and client-only components.
+
+## Overview
+
+The `piradar` package has been reorganized into two main subpackages:
+
+1. **`piradar.hw`** - Hardware access components (requires Raspberry Pi with radar sensor)
+2. **`piradar.client`** - Client-only components (for remote access via ZMQ)
+
+## Installation Options
+
+### Base Installation (Client-Only)
+For remote access without hardware dependencies:
+```bash
+pip install piradar
+```
+
+This installs the base package with ZMQ support but **without** hardware dependencies like `gpiod`, `spidev`, and `smbus2`.
+
+### Client with Visualization
+For remote access with plotting and signal processing:
+```bash
+pip install piradar[client]
+```
+
+Includes additional dependencies:
+- `matplotlib` for visualization
+- `scipy` for signal processing
+
+### Hardware Installation
+For Raspberry Pi with the radar sensor:
+```bash
+pip install piradar[all]
+```
+
+Includes all dependencies:
+- Hardware: `gpiod`, `spidev`, `smbus2`
+- Client: `matplotlib`, `scipy`
+
+### Development Installation
+For development work:
+```bash
+pip install piradar[dev,test,docs]
+```
+
+## Package Structure
+
+```
+piradar/
+├── __init__.py                 # Main package (tries to import hw, gracefully handles missing deps)
+├── registermap.py              # Register map (shared between hw and client)
+├── registers.py                # Register definitions
+├── config.py                   # Configuration classes
+├── rl_env.py                   # Reinforcement learning environment
+├── cli.py                      # Command-line interface
+│
+├── hw/                         # Hardware components
+│   ├── __init__.py
+│   ├── bgt60tr13c.py          # Radar sensor driver
+│   ├── spiinterface.py        # SPI communication
+│   ├── eeprom.py              # EEPROM utilities
+│   ├── utility.py             # Hardware utilities
+│   ├── radar_controller.py    # Adaptive radar controller
+│   └── zmq_handler.py         # ZMQ communication handlers
+│
+└── client/                     # Client components
+    ├── __init__.py
+    ├── communication/          # ZMQ client utilities
+    ├── config/                 # Client configuration
+    ├── plotting/               # Visualization tools
+    └── processing/             # Signal processing
+```
+
+## Import Changes
+
+### Before (Old Structure)
+```python
+from piradar import BGT60TR13C
+from piradar.bgt60tr13c import BGT60TR13CError
+from piradar.zmq_handler import AsyncZMQHandler, AsyncZMQClient
+from piradar.radar_controller import AdaptiveRadarController
+```
+
+### After (New Structure)
+```python
+from piradar.hw import BGT60TR13C, BGT60TR13CError
+from piradar.hw import AsyncZMQHandler, AsyncZMQClient
+from piradar.hw import AdaptiveRadarController
+```
+
+### Backward Compatibility
+
+The main `piradar` package tries to import from `piradar.hw` but gracefully handles missing hardware dependencies:
+
+```python
+from piradar import BGT60TR13C  # Still works, but returns None if hw deps missing
+```
+
+This allows client code to check for hardware availability:
+
+```python
+from piradar import BGT60TR13C
+
+if BGT60TR13C is None:
+    print("Hardware not available, using synthetic mode")
+else:
+    radar = BGT60TR13C()
+```
+
+## Shared Components
+
+These components are available in all installations (no hardware dependencies):
+
+- `piradar.registermap.RegisterMap` - Register map parser
+- `piradar.registers` - Register definitions  
+- `piradar.config.RadarConfig` - Configuration classes
+- `piradar.rl_env.RadarRLEnv` - RL environment (requires radar instance)
+
+## Hardware Components (piradar.hw)
+
+Available only when hardware dependencies are installed:
+
+- `BGT60TR13C` - Main radar sensor driver
+- `SpiInterface` - SPI communication
+- `check_hat()` - EEPROM verification
+- `AdaptiveRadarController` - Adaptive parameter control
+- `AsyncZMQHandler` - Server-side ZMQ handler
+- `AsyncZMQClient` - Client-side ZMQ handler
+
+## Client Components (piradar.client)
+
+Available with `pip install piradar[client]`:
+
+- Communication utilities
+- Plotting helpers
+- Signal processing functions
+- Radar plot configurations
+
+## Migration Guide
+
+### Updating Existing Code
+
+1. **Update imports:**
+   ```python
+   # Old
+   from piradar.bgt60tr13c import BGT60TR13C
+   
+   # New
+   from piradar.hw import BGT60TR13C
+   ```
+
+2. **Update ZMQ imports:**
+   ```python
+   # Old
+   from piradar.zmq_handler import AsyncZMQHandler
+   
+   # New
+   from piradar.hw import AsyncZMQHandler
+   ```
+
+3. **Update controller imports:**
+   ```python
+   # Old
+   from piradar.radar_controller import AdaptiveRadarController
+   
+   # New
+   from piradar.hw import AdaptiveRadarController
+   ```
+
+### Test Files
+
+Test files in `tests/hw/` should import from `piradar.hw`:
+
+```python
+import pytest
+from piradar.hw import BGT60TR13C, BGT60TR13CError
+from piradar.config import RadarConfig
+```
+
+### Example Files
+
+Example files should import from `piradar.hw`:
+
+```python
+from piradar.hw import BGT60TR13C, AsyncZMQHandler
+```
+
+## Benefits
+
+1. **Flexible Installation**: Install only what you need
+2. **Shared Register Map**: Single source of truth for register definitions
+3. **Clear Separation**: Hardware and client code are clearly separated
+4. **Graceful Degradation**: Code can detect and handle missing hardware
+5. **Development Friendly**: Easier to develop client features without hardware
+
+

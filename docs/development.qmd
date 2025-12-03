@@ -1,0 +1,396 @@
+# Development
+
+Guide for contributing to PiRadar development.
+
+## Getting Started
+
+### Development Setup
+
+```bash
+# Clone repository
+git clone https://github.com/juhasch/piradar.git
+cd piradar
+
+# Create virtual environment
+uv venv
+source venv/bin/activate
+
+# Install in editable mode with development dependencies
+uv pip install -e .[dev]
+```
+
+### Development Dependencies
+
+The `dev` extra includes:
+
+- **Testing**: pytest, pytest-cov, pytest-asyncio
+- **Code Quality**: black, flake8, mypy, isort
+- **Documentation**: mkdocs, mkdocs-material (or quarto)
+- **Pre-commit**: pre-commit hooks
+
+## Testing
+
+### Running Tests
+
+```bash
+# All tests
+piradar test
+
+# Unit tests only (no hardware required)
+pytest tests/unit/
+
+# Integration tests (requires hardware)
+pytest tests/ -m integration
+
+# Hardware tests (requires Dreamhat)
+pytest tests/ -m hardware
+
+# With coverage
+pytest tests/ --cov=piradar --cov-report=html
+```
+
+### Test Structure
+
+```
+tests/
+├── unit/                      # Unit tests (no hardware)
+│   ├── test_config.py
+│   ├── test_registermap.py
+│   └── test_zmq_handler.py
+├── test_radar_basic.py        # Basic hardware tests
+├── test_radar_data.py         # Data collection tests
+└── test_zmq_integration.py    # Integration tests
+```
+
+### Writing Tests
+
+```python
+import pytest
+from piradar.config import RadarConfig
+
+def test_config_validation():
+    """Test configuration validation"""
+    # Valid config
+    config = RadarConfig(
+        start_frequency_Hz=58_000_000_000,
+        stop_frequency_Hz=63_000_000_000,
+        chirp_duration_s=0.0005,
+        frame_length=64,
+        frame_duration_s=0.1,
+        output_power=31,
+        adc_sample_rate_Hz=2_000_000
+    )
+    assert config.start_frequency_Hz < config.stop_frequency_Hz
+    
+    # Invalid config
+    with pytest.raises(ValueError):
+        config = RadarConfig(
+            start_frequency_Hz=63_000_000_000,
+            stop_frequency_Hz=58_000_000_000,  # Error
+            chirp_duration_s=0.0005,
+            frame_length=64,
+            frame_duration_s=0.1,
+            output_power=31,
+            adc_sample_rate_Hz=2_000_000
+        )
+
+@pytest.mark.hardware
+def test_radar_connection():
+    """Test radar hardware connection"""
+    from piradar.hw import BGT60TR13C
+    
+    with BGT60TR13C() as radar:
+        chip_id = radar.read_register(0x02)
+        assert chip_id == 0x0303
+```
+
+## Code Quality
+
+### Formatting
+
+```bash
+# Format code with black
+black piradar/ tests/
+
+# Sort imports
+isort piradar/ tests/
+
+# Check formatting
+black --check piradar/ tests/
+```
+
+### Linting
+
+```bash
+# Run flake8
+flake8 piradar/ tests/
+
+# Type checking with mypy
+mypy piradar/
+```
+
+### Pre-commit Hooks
+
+```bash
+# Install pre-commit hooks
+pre-commit install
+
+# Run manually
+pre-commit run --all-files
+```
+
+`.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+      - id: black
+  
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+  
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+```
+
+## Documentation
+
+### Building Documentation
+
+With Quarto:
+
+```bash
+# Preview documentation
+quarto preview docs/
+
+# Render documentation
+quarto render docs/
+
+# Output in docs/_book/
+```
+
+With MkDocs (legacy):
+
+```bash
+# Install dependencies
+pip install -r docs/requirements-docs.txt
+
+# Serve locally
+mkdocs serve
+
+# Build static site
+mkdocs build
+```
+
+### Writing Documentation
+
+Documentation follows Quarto markdown (`.qmd`) format:
+
+```markdown
+# Chapter Title
+
+Introduction paragraph.
+
+## Section
+
+### Subsection
+
+Code example:
+
+\```python
+from piradar.hw import BGT60TR13C
+
+with BGT60TR13C() as radar:
+    radar.start()
+\```
+
+::: {.callout-note}
+This is a note callout.
+:::
+```
+
+## Contributing
+
+### Workflow
+
+1. **Fork** the repository
+2. **Create** a feature branch: `git checkout -b feature/my-feature`
+3. **Make** changes and commit: `git commit -am 'Add feature'`
+4. **Test** your changes: `pytest tests/`
+5. **Push** to your fork: `git push origin feature/my-feature`
+6. **Create** a Pull Request
+
+### Commit Messages
+
+Follow conventional commits:
+
+```
+feat: Add adaptive radar parameter control
+fix: Correct FIFO overflow handling
+docs: Update configuration guide
+test: Add unit tests for registermap
+refactor: Simplify ZMQ handler interface
+```
+
+### Pull Request Guidelines
+
+- Include tests for new features
+- Update documentation
+- Ensure all tests pass
+- Follow code style guidelines
+- Add entry to CHANGELOG.md
+
+## Project Structure
+
+For detailed information about the package structure, see the [Package Structure](package-structure) guide.
+
+The main project structure:
+
+```
+piradar/
+├── piradar/                 # Main package
+│   ├── __init__.py
+│   ├── hw/                  # Hardware components
+│   ├── client/              # Client-only components
+│   ├── cli.py               # CLI implementation
+│   ├── config.py            # Configuration classes
+│   ├── registermap.py       # Register map interface
+│   ├── registers.py         # Register definitions
+│   └── rl_env.py            # RL environment
+├── tests/                   # Test suite
+├── docs/                    # Documentation (Quarto)
+├── examples/                # Example scripts
+├── scripts/                 # Utility scripts
+├── pyproject.toml           # Project configuration
+├── requirements.txt         # Dependencies
+└── README.md                # Project README
+```
+
+## RL Environment
+
+The reinforcement learning environment (`piradar.rl_env.RadarRLEnv`) provides a Gym-like interface:
+
+```python
+import numpy as np
+from piradar.rl_env import RadarRLEnv
+
+# Create environment
+env = RadarRLEnv(
+    host="localhost",
+    data_port=5555,
+    command_port=5556
+)
+
+# Reset
+observation = env.reset()
+
+# Run episode
+for _ in range(100):
+    action = env.action_space.sample()
+    observation, reward, done, info = env.step(action)
+    
+    if done:
+        break
+
+env.close()
+```
+
+### ActionSpec
+
+Maps continuous action vectors to radar parameters:
+
+```python
+from piradar.rl_env import ActionSpec
+
+# Define action mapping
+action_spec = ActionSpec(
+    parameter_ranges={
+        "tx_power": (0, 31),
+        "chirp_duration": (300, 800),
+    }
+)
+
+# Convert action to parameters
+action = np.array([0.5, 0.8])
+parameters = action_spec.action_to_parameters(action)
+```
+
+## Release Process
+
+1. **Update version** in `pyproject.toml`
+2. **Update CHANGELOG.md**
+3. **Run tests**: `pytest tests/`
+4. **Build documentation**: `quarto render docs/`
+5. **Create tag**: `git tag v1.0.0`
+6. **Push tag**: `git push origin v1.0.0`
+7. **Build package**: `python -m build`
+8. **Upload to PyPI**: `twine upload dist/*`
+
+## Debugging
+
+### Enable Debug Logging
+
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+```
+
+### Common Issues
+
+**SPI Communication Errors**
+
+```python
+# Check SPI permissions
+import os
+print(os.access('/dev/spidev0.0', os.R_OK | os.W_OK))
+
+# Verify SPI speed
+with BGT60TR13C(spi_speed=10_000_000) as radar:  # Slower speed
+    chip_id = radar.read_register(0x02)
+```
+
+**GPIO Issues**
+
+```bash
+# Check GPIO groups
+groups $USER
+
+# Should include 'gpio'
+sudo usermod -a -G gpio $USER
+```
+
+## Resources
+
+### Documentation
+
+- [BGT60TR13C Datasheet](https://www.infineon.com/cms/en/product/sensor/radar-sensors/radar-sensors-for-iot/60ghz-radar/bgt60tr13c/)
+- [ZeroMQ Guide](https://zeromq.org/get-started/)
+- [Quarto Documentation](https://quarto.org/docs/guide/)
+
+### Tools
+
+- [pytest](https://docs.pytest.org/)
+- [black](https://black.readthedocs.io/)
+- [mypy](https://mypy.readthedocs.io/)
+- [pre-commit](https://pre-commit.com/)
+
+## Community
+
+- **Issues**: https://github.com/juhasch/piradar/issues
+- **Discussions**: https://github.com/juhasch/piradar/discussions
+- **Pull Requests**: https://github.com/juhasch/piradar/pulls
+
+## License
+
+PiRadar is licensed under the MIT License. See LICENSE file for details.
+

@@ -1,0 +1,391 @@
+# Examples
+
+This chapter provides practical examples for common PiRadar use cases.
+
+## Basic Data Collection
+
+### Simple Data Capture
+
+```python
+from piradar.hw import BGT60TR13C
+import numpy as np
+
+# Initialize and collect data
+with BGT60TR13C() as radar:
+    radar.configure()  # Use default configuration
+    radar.set_fifo_parameters(1024, 512, 256)
+    radar.start()
+    
+    # Collect 100 frames
+    frames = []
+    for i in range(100):
+        frame = radar.frame_buffer.get(timeout=5.0)
+        frames.append(frame)
+        print(f"Frame {i+1}: {frame.shape}")
+    
+    radar.stop()
+
+# Save data
+frames_array = np.array(frames)
+np.save('radar_data.npy', frames_array)
+print(f"Saved {len(frames)} frames")
+```
+
+### Continuous Monitoring
+
+```python
+from piradar.hw import BGT60TR13C
+import time
+
+with BGT60TR13C() as radar:
+    radar.configure()
+    radar.start()
+    
+    start_time = time.time()
+    frame_count = 0
+    
+    # Monitor for 30 seconds
+    while time.time() - start_time < 30:
+        frame = radar.frame_buffer.get(timeout=5.0)
+        frame_count += 1
+        
+        # Simple statistics
+        mean_val = frame.mean()
+        std_val = frame.std()
+        print(f"Frame {frame_count}: mean={mean_val:.2f}, std={std_val:.2f}")
+    
+    radar.stop()
+    fps = frame_count / (time.time() - start_time)
+    print(f"Average FPS: {fps:.2f}")
+```
+
+## Configuration Examples
+
+### Loading from YAML
+
+```python
+from piradar.hw import BGT60TR13C
+from piradar.config import RadarConfig
+
+# Load configuration
+config = RadarConfig.read_yaml("radar_config.yaml")
+
+with BGT60TR13C() as radar:
+    radar.configure(config)
+    radar.start()
+    
+    # Collect data with custom config
+    frame = radar.frame_buffer.get(timeout=5.0)
+    print(f"Collected frame with custom config: {frame.shape}")
+```
+
+### Creating Custom Configuration
+
+```python
+from piradar.config import RadarConfig
+
+# Short range configuration
+short_range = RadarConfig(
+    start_frequency_Hz=60_000_000_000,
+    stop_frequency_Hz=63_000_000_000,
+    chirp_duration_s=0.0003,
+    frame_length=128,
+    frame_duration_s=0.05,
+    output_power=20,
+    adc_sample_rate_Hz=2_000_000
+)
+
+# Save to file
+with open("short_range.yaml", "w") as f:
+    f.write(short_range.model_dump_yaml())
+```
+
+### Multiple Range Profiles
+
+```python
+from piradar.hw import BGT60TR13C
+from piradar.config import RadarConfig
+
+# Define configurations
+configs = {
+    "short": RadarConfig(
+        start_frequency_Hz=60_000_000_000,
+        stop_frequency_Hz=63_000_000_000,
+        chirp_duration_s=0.0003,
+        frame_length=128,
+        frame_duration_s=0.05,
+        output_power=20,
+        adc_sample_rate_Hz=2_000_000
+    ),
+    "medium": RadarConfig(
+        start_frequency_Hz=58_000_000_000,
+        stop_frequency_Hz=63_000_000_000,
+        chirp_duration_s=0.0005,
+        frame_length=64,
+        frame_duration_s=0.1,
+        output_power=31,
+        adc_sample_rate_Hz=2_500_000
+    ),
+    "long": RadarConfig(
+        start_frequency_Hz=58_000_000_000,
+        stop_frequency_Hz=63_500_000_000,
+        chirp_duration_s=0.001,
+        frame_length=32,
+        frame_duration_s=0.2,
+        output_power=31,
+        adc_sample_rate_Hz=4_000_000
+    )
+}
+
+# Test each configuration
+with BGT60TR13C() as radar:
+    for name, config in configs.items():
+        print(f"\nTesting {name} range configuration...")
+        radar.configure(config)
+        radar.start()
+        
+        # Collect 10 frames
+        for i in range(10):
+            frame = radar.frame_buffer.get(timeout=5.0)
+            print(f"  Frame {i+1}: {frame.shape}")
+        
+        radar.stop()
+```
+
+## Data Processing Examples
+
+### Range-Doppler Processing
+
+```python
+import numpy as np
+from piradar.hw import BGT60TR13C
+
+def range_doppler_processing(frames):
+    """
+    Simple range-Doppler processing
+    
+    Args:
+        frames: Array of shape (num_frames, num_chirps, num_samples, num_channels)
+    
+    Returns:
+        Range-Doppler map
+    """
+    # FFT across fast-time (range)
+    range_fft = np.fft.fft(frames, axis=2)
+    
+    # FFT across slow-time (Doppler)
+    range_doppler = np.fft.fft(range_fft, axis=1)
+    
+    # Take magnitude and average across channels
+    rd_map = np.abs(range_doppler).mean(axis=3)
+    
+    return rd_map
+
+# Collect data
+with BGT60TR13C() as radar:
+    radar.configure()
+    radar.start()
+    
+    frames = []
+    for _ in range(64):  # Collect 64 frames
+        frame = radar.frame_buffer.get(timeout=5.0)
+        frames.append(frame)
+    
+    radar.stop()
+
+# Process
+frames_array = np.array(frames)
+rd_map = range_doppler_processing(frames_array)
+
+print(f"Range-Doppler map shape: {rd_map.shape}")
+```
+
+### Target Detection
+
+```python
+import numpy as np
+from piradar.hw import BGT60TR13C
+
+def detect_targets(frame, threshold=100):
+    """
+    Simple target detection using threshold
+    
+    Args:
+        frame: Single radar frame
+        threshold: Detection threshold
+    
+    Returns:
+        List of detected target indices
+    """
+    # Average across channels
+    avg_frame = frame.mean(axis=2)
+    
+    # FFT for range profile
+    range_profile = np.abs(np.fft.fft(avg_frame, axis=1))
+    
+    # Peak detection
+    targets = []
+    for chirp_idx, chirp in enumerate(range_profile):
+        peaks = np.where(chirp > threshold)[0]
+        for peak in peaks:
+            targets.append((chirp_idx, peak, chirp[peak]))
+    
+    return targets
+
+# Collect and process
+with BGT60TR13C() as radar:
+    radar.configure()
+    radar.start()
+    
+    for i in range(10):
+        frame = radar.frame_buffer.get(timeout=5.0)
+        targets = detect_targets(frame)
+        
+        if targets:
+            print(f"Frame {i}: Detected {len(targets)} targets")
+            for t in targets[:5]:  # Show first 5
+                print(f"  Chirp {t[0]}, Range bin {t[1]}, Power {t[2]:.2f}")
+        else:
+            print(f"Frame {i}: No targets detected")
+```
+
+### Saving to HDF5 with Metadata
+
+```python
+import h5py
+import numpy as np
+from piradar.hw import BGT60TR13C
+from piradar.config import RadarConfig
+import time
+
+# Load config
+config = RadarConfig.read_yaml("radar_config.yaml")
+
+# Collect data
+with BGT60TR13C() as radar:
+    radar.configure(config)
+    radar.start()
+    
+    frames = []
+    timestamps = []
+    
+    for i in range(100):
+        frame = radar.frame_buffer.get(timeout=5.0)
+        frames.append(frame)
+        timestamps.append(time.time())
+    
+    radar.stop()
+
+# Save to HDF5
+with h5py.File('radar_data.h5', 'w') as f:
+    # Save frames
+    f.create_dataset('frames', data=np.array(frames))
+    f.create_dataset('timestamps', data=np.array(timestamps))
+    
+    # Save metadata
+    f.attrs['start_frequency_Hz'] = config.start_frequency_Hz
+    f.attrs['stop_frequency_Hz'] = config.stop_frequency_Hz
+    f.attrs['chirp_duration_s'] = config.chirp_duration_s
+    f.attrs['frame_length'] = config.frame_length
+    f.attrs['adc_sample_rate_Hz'] = config.adc_sample_rate_Hz
+    f.attrs['num_frames'] = len(frames)
+    f.attrs['recording_date'] = time.strftime('%Y-%m-%d %H:%M:%S')
+
+print("Data saved to radar_data.h5")
+```
+
+## CLI Examples
+
+### Basic Monitoring
+
+```bash
+# Monitor with default settings
+piradar monitor
+
+# Monitor for specific duration
+piradar monitor --duration 60
+
+# Monitor with custom config
+piradar monitor --config radar_config.yaml --duration 30
+
+# Monitor with debug logging
+piradar --log-level DEBUG monitor
+```
+
+### Recording Data
+
+```bash
+# Record 100 frames to NumPy file
+piradar record --frames 100 --output data.npy
+
+# Record to HDF5 with metadata
+piradar record --frames 100 --output data.h5 --metadata
+
+# Record with custom configuration
+piradar record --config long_range.yaml --frames 200 --output long_range_data.npy
+
+# Continuous recording (until Ctrl+C)
+piradar record --output continuous.h5
+```
+
+### Checking Hardware
+
+```bash
+# Verify chip connection
+piradar check-id
+
+# With custom GPIO pins
+piradar --rst-pin 12 --irq-pin 25 check-id
+```
+
+## Running Example Scripts
+
+The `examples/` directory contains ready-to-run demonstration scripts:
+
+### Simple Radar Publisher
+
+```bash
+# Terminal 1: Start publisher
+python examples/simple_radar_publisher.py
+
+# Terminal 2: Start subscriber (in another terminal)
+python examples/zmq_subscriber.py
+```
+
+### Bidirectional Communication
+
+```bash
+# Terminal 1: Start server
+python examples/zmq_bidirectional_demo.py server
+
+# Terminal 2: Start client
+python examples/zmq_bidirectional_demo.py client
+```
+
+### Adaptive Radar Demo
+
+```bash
+# Terminal 1: Start adaptive server
+piradar adaptive-server --synthetic
+
+# Terminal 2: Run demo client
+python examples/adaptive_radar_demo.py
+```
+
+### Register Map Access
+
+```bash
+# Terminal 1: Start server
+piradar adaptive-server --synthetic
+
+# Terminal 2: Explore register map
+python examples/register_map_demo.py
+```
+
+## Next Steps
+
+- [ZeroMQ Examples](examples-zmq)
+- [Adaptive Radar Examples](examples-adaptive)
+- [Network Data Format](network-format)
+- [Python API Reference](python-api)
+

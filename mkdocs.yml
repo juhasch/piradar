@@ -1,0 +1,23 @@
+site_name: PiRadar Documentation
+site_description: High-performance Python driver for the BGT60TR13C radar on Raspberry Pi
+site_url: https://github.com/juhasch/piradar
+repo_url: https://github.com/juhasch/piradar
+repo_name: juhasch/piradar
+
+theme:
+  name: mkdocs
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - CLI: cli.md
+  - Register Map: registermap.md
+  - Development: development.md
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - tables
+
+docs_dir: docs

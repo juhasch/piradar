@@ -1,0 +1,45 @@
+# calibration config file
+
+stepper:
+  hostname: "192.168.3.203"  # IP address or hostname of stepper motor controller
+  home_position: 86
+  steps: 400
+  speed: 2000
+  calibrate: true
+
+
+# Measurement script configuration
+start: -90.0  # start angle in deg
+stop: 90.0    # stop angle in deg
+step: 5.0     # Rotation step size in deg
+pause: 1.0    # pause in seconds between measurements
+speed: 1000   # Speed setting for the motor (microseconds delay)
+
+distance: 30.0    # distance in cm to the target
+averaging: 20     # number of frames to average
+window: "hamming"
+
+# Radar ZMQ configuration
+zmq_host: "radarpi"  # ZMQ hostname or IP address
+zmq_max_drain: 50  # Maximum number of frames to drain from ZMQ socket
+command_timeout: 2.0  # HTTP command timeout in seconds
+
+
+# Test mode
+test_mode: false  # Set to true to run without radar (for testing stepper motor only)
+
+# Live plotting during measurements
+enable_plotting: true  # Enable live plotting during measurements
+show_individual_channels: true  # Show individual RX channel plots
+
+# Peak finding configuration
+peak_finding_enabled: true  # Enable peak finding
+peak_finding_min_range_cm: 5.0  # Minimum range for peak finding (cm)
+peak_finding_threshold: 0.1  # Peak detection threshold
+peak_finding_ignore_range_0: true  # Ignore range 0 (self-coupling)
+peak_finding_distance_tolerance_cm: 5.0  # Tolerance around target distance for peak finding (cm)
+
+
+plot:
+  db_min: 20.0
+  db_max: 100.0

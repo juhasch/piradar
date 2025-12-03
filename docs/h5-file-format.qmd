@@ -1,0 +1,224 @@
+# HDF5 Radar Data File Format
+
+This chapter describes the HDF5 file format used for storing radar data streams from PiRadar client applications.
+
+## File Structure
+
+The HDF5 file contains the following groups and datasets:
+
+```
+radar_data_YYYYMMDD_HHMMSS.h5
+├── metadata/ (group)
+│   ├── Attributes:
+│   │   ├── start_frequency_Hz
+│   │   ├── stop_frequency_Hz
+│   │   ├── chirp_duration_s
+│   │   ├── frame_length
+│   │   ├── frame_duration_s
+│   │   ├── output_power
+│   │   ├── adc_sample_rate_Hz
+│   │   ├── recording_start_time (ISO format)
+│   │   ├── recording_end_time (ISO format)
+│   │   ├── recording_duration_seconds
+│   │   ├── num_frames
+│   │   ├── average_fps
+│   │   ├── sample_rate_hz
+│   │   └── chirp_index
+│
+├── frame_ids (dataset)
+│   ├── Shape: (num_frames,)
+│   ├── Dtype: int64
+│   └── Description: Sequential frame IDs from radar
+│
+├── timestamps (dataset)
+│   ├── Shape: (num_frames,)
+│   ├── Dtype: float64
+│   └── Description: Unix timestamps (seconds since epoch) for each frame
+│
+└── data (dataset)
+    ├── Shape: (num_frames, num_chirps, num_samples, num_channels)
+    ├── Dtype: int16 (typically)
+    └── Description: Raw radar ADC samples
+```
+
+## Dataset Details
+
+### `metadata` Group
+
+Contains radar configuration and recording metadata as HDF5 attributes:
+
+- **Radar Configuration Parameters**: All parameters from the radar configuration at recording start
+  - `start_frequency_Hz`: Start frequency of chirp (Hz)
+  - `stop_frequency_Hz`: Stop frequency of chirp (Hz)
+  - `chirp_duration_s`: Duration of each chirp (seconds)
+  - `frame_length`: Number of chirps per frame
+  - `frame_duration_s`: Duration of complete frame (seconds)
+  - `output_power`: Transmit power level (0-31)
+  - `adc_sample_rate_Hz`: ADC sampling rate (Hz)
+
+- **Recording Metadata**:
+  - `recording_start_time`: ISO 8601 timestamp when recording started
+  - `recording_end_time`: ISO 8601 timestamp when recording ended
+  - `recording_duration_seconds`: Total recording duration
+  - `num_frames`: Total number of frames recorded
+  - `average_fps`: Average frame rate (frames per second)
+  - `sample_rate_hz`: ADC sample rate for time-domain analysis
+  - `chirp_index`: Chirp index used for time-domain extraction (-1 for mean)
+
+### `frame_ids` Dataset
+
+One-dimensional array of frame identifiers. These correspond to sequential frame numbers from the radar system.
+
+- **Type**: `int64`
+- **Shape**: `(num_frames,)`
+- **Example**: `[1, 2, 3, 4, ...]`
+
+### `timestamps` Dataset
+
+Unix timestamps (seconds since epoch) for each frame, allowing precise timing analysis.
+
+- **Type**: `float64`
+- **Shape**: `(num_frames,)`
+- **Example**: `[1699123456.123, 1699123456.223, ...]`
+
+### `data` Dataset
+
+Raw radar ADC samples. The shape depends on the radar configuration:
+
+- **Type**: Typically `int16` (16-bit signed integers)
+- **Shape**: `(num_frames, num_chirps, num_samples, num_channels)`
+  - `num_frames`: Number of frames recorded
+  - `num_chirps`: Number of chirps per frame (from `frame_length` in metadata)
+  - `num_samples`: Number of ADC samples per chirp (typically 128)
+  - `num_channels`: Number of RX channels (typically 3)
+
+## Usage Examples
+
+### Python: Reading the File
+
+```python
+import h5py
+import numpy as np
+from datetime import datetime
+
+# Open the file
+with h5py.File('radar_data_20240101_120000.h5', 'r') as f:
+    # Read metadata
+    metadata = dict(f['metadata'].attrs)
+    print(f"Recording: {metadata['num_frames']} frames")
+    print(f"Duration: {metadata['recording_duration_seconds']:.2f} seconds")
+    print(f"Average FPS: {metadata['average_fps']:.2f}")
+    
+    # Read frame IDs and timestamps
+    frame_ids = f['frame_ids'][:]
+    timestamps = f['timestamps'][:]
+    
+    # Read data
+    data = f['data'][:]
+    
+    print(f"Data shape: {data.shape}")
+    print(f"First frame ID: {frame_ids[0]}")
+    print(f"First timestamp: {timestamps[0]}")
+
+# Extract time-domain samples for a specific frame
+frame_idx = 0
+chirp_idx = 0  # Or use -1 for mean across chirps
+if chirp_idx == -1:
+    time_series = np.mean(data[frame_idx], axis=0)  # Shape: (num_samples, num_channels)
+else:
+    time_series = data[frame_idx, chirp_idx]  # Shape: (num_samples, num_channels)
+
+print(f"Time series shape: {time_series.shape}")
+```
+
+### Python: Processing Multiple Frames
+
+```python
+import h5py
+import numpy as np
+
+with h5py.File('radar_data_20240101_120000.h5', 'r') as f:
+    metadata = dict(f['metadata'].attrs)
+    data = f['data'][:]
+    timestamps = f['timestamps'][:]
+    
+    num_frames = data.shape[0]
+    num_chirps = data.shape[1]
+    num_samples = data.shape[2]
+    num_channels = data.shape[3]
+    
+    # Extract time-domain data for all frames (using mean across chirps)
+    time_series_all = np.mean(data, axis=1)  # Shape: (num_frames, num_samples, num_channels)
+    
+    # Process each frame
+    for frame_idx in range(num_frames):
+        ts = time_series_all[frame_idx]
+        timestamp = timestamps[frame_idx]
+        
+        # Your processing here
+        # ts shape: (num_samples, num_channels)
+        pass
+```
+
+### Python: Converting Timestamps to DateTime
+
+```python
+import h5py
+from datetime import datetime
+
+with h5py.File('radar_data_20240101_120000.h5', 'r') as f:
+    timestamps = f['timestamps'][:]
+    
+    # Convert Unix timestamps to datetime objects
+    datetimes = [datetime.fromtimestamp(ts) for ts in timestamps]
+    
+    print(f"First frame: {datetimes[0]}")
+    print(f"Last frame: {datetimes[-1]}")
+```
+
+### Python: Accessing Radar Configuration
+
+```python
+import h5py
+
+with h5py.File('radar_data_20240101_120000.h5', 'r') as f:
+    metadata = dict(f['metadata'].attrs)
+    
+    # Access radar configuration
+    start_freq = metadata['start_frequency_Hz']
+    stop_freq = metadata['stop_frequency_Hz']
+    sample_rate = metadata['adc_sample_rate_Hz']
+    chirp_duration = metadata['chirp_duration_s']
+    
+    print(f"Frequency range: {start_freq/1e9:.2f} - {stop_freq/1e9:.2f} GHz")
+    print(f"Sample rate: {sample_rate/1e6:.2f} MS/s")
+    print(f"Chirp duration: {chirp_duration*1e6:.2f} μs")
+```
+
+## Notes
+
+- The `data` dataset contains **raw ADC samples** without any processing (no windowing, FFT, or filtering).
+- Frame IDs start from 1 and increment sequentially.
+- Timestamps are Unix timestamps (seconds since January 1, 1970 UTC).
+- The file is written when streaming is stopped, so all data is buffered in memory during recording.
+- Data types match the original radar output format (typically int16).
+
+## File Naming Convention
+
+Files are automatically named using the format:
+```
+radar_data_YYYYMMDD_HHMMSS.h5
+```
+
+Where:
+- `YYYYMMDD`: Date in year-month-day format
+- `HHMMSS`: Time in hour-minute-second format (24-hour)
+
+Example: `radar_data_20240115_143022.h5`
+
+## Related Documentation
+
+- [Network Data Format](network-format.qmd) - Understanding the data format used in network communication
+- [Python API Reference](python-api.qmd) - Complete API documentation
+- [Client Configuration](client-configuration.qmd) - Configuring client applications
+

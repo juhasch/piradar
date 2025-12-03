@@ -1,0 +1,12 @@
+# Quarto output directories
+_site/
+_book/
+
+# Generated HTML files
+*.html
+
+# Backup files
+*.backup
+
+/.quarto/
+**/*.quarto_ipynb

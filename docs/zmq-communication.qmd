@@ -1,0 +1,534 @@
+# ZeroMQ Communication
+
+This chapter details the ZeroMQ (ZMQ) communication architecture used in PiRadar.
+
+## Overview
+
+PiRadar uses ZeroMQ for high-performance, bidirectional communication between the radar server (typically on Raspberry Pi) and clients (on any machine).
+
+### Key Features
+
+- **Bidirectional Communication**: Both data streaming and command/control
+- **Async/Await Support**: Non-blocking operations with Python's asyncio
+- **Multiple Port Configuration**: Separate ports for data, commands, and status
+- **Pattern-based**: Uses PUB/SUB for streaming, REQ/REP for commands
+- **Language Agnostic**: ZMQ clients can be written in any language
+
+## Architecture
+
+### Port Configuration
+
+```
+┌─────────────────────────────────────────────┐
+│         Radar Server (Raspberry Pi)         │
+│                                             │
+│  ┌─────────────────────────────────────┐   │
+│  │  Data Publisher (PUB)               │   │
+│  │  Port 5555                          │   │
+│  └────────────┬────────────────────────┘   │
+│               │                             │
+│  ┌────────────▼────────────────────────┐   │
+│  │  Command Handler (REP)              │   │
+│  │  Port 5556                          │   │
+│  └────────────┬────────────────────────┘   │
+│               │                             │
+│  ┌────────────▼────────────────────────┐   │
+│  │  Status Publisher (PUB)             │   │
+│  │  Port 5557                          │   │
+│  └─────────────────────────────────────┘   │
+└─────────────────────────────────────────────┘
+                    │
+                    │ TCP/IP
+                    │
+┌───────────────────▼─────────────────────────┐
+│         Client(s) (Any Machine)             │
+│                                             │
+│  ┌─────────────────────────────────────┐   │
+│  │  Data Subscriber (SUB)              │   │
+│  │  → localhost:5555                   │   │
+│  └─────────────────────────────────────┘   │
+│                                             │
+│  ┌─────────────────────────────────────┐   │
+│  │  Command Client (REQ)               │   │
+│  │  → localhost:5556                   │   │
+│  └─────────────────────────────────────┘   │
+│                                             │
+│  ┌─────────────────────────────────────┐   │
+│  │  Status Subscriber (SUB)            │   │
+│  │  → localhost:5557                   │   │
+│  └─────────────────────────────────────┘   │
+└─────────────────────────────────────────────┘
+```
+
+### Communication Patterns
+
+| Pattern | Ports | Direction | Use Case |
+|---------|-------|-----------|----------|
+| **PUB/SUB** | 5555, 5557 | Server → Clients | Data & status streaming |
+| **REQ/REP** | 5556 | Client ↔ Server | Commands & responses |
+
+## Starting the ZMQ Server
+
+### Command Line
+
+```bash
+# Start with default ports
+piradar publish
+
+# Custom port configuration
+piradar publish --port 5555
+
+# With custom configuration
+piradar publish --config radar_config.yaml --port 5555
+
+# Limit number of frames
+piradar publish --frames 1000 --port 5555
+```
+
+This automatically starts:
+- Data publisher on specified port (default: 5555)
+- Command handler on port + 1 (default: 5556)
+- Status publisher on port + 2 (default: 5557)
+
+### Python API
+
+```python
+import asyncio
+from piradar.hw import AsyncZMQHandler
+from piradar.hw import BGT60TR13C
+
+async def run_zmq_server():
+    # Create handler
+    handler = AsyncZMQHandler(
+        data_port=5555,
+        command_port=5556,
+        status_port=5557
+    )
+    
+    # Register command handlers
+    async def handle_start(parameters):
+        # Start radar
+        return {"status": "started"}
+    
+    handler.register_command_handler("start", handle_start)
+    
+    # Start command listener
+    asyncio.create_task(handler.start_command_listener())
+    
+    # Initialize radar
+    with BGT60TR13C() as radar:
+        radar.configure()
+        radar.start()
+        
+        frame_id = 0
+        while True:
+            frame = radar.frame_buffer.get(timeout=5.0)
+            
+            # Publish frame
+            await handler.publish_frame(frame, {
+                "frame_id": frame_id,
+                "timestamp": time.time()
+            })
+            
+            # Publish status periodically
+            if frame_id % 10 == 0:
+                await handler.publish_status(f"running (frame {frame_id})")
+            
+            frame_id += 1
+    
+    await handler.close()
+
+asyncio.run(run_zmq_server())
+```
+
+## Connecting as a Client
+
+### Command Line
+
+```bash
+# Connect and receive data
+piradar zmq-client --host localhost --data-port 5555
+
+# Interactive mode with command support
+piradar zmq-client --interactive
+
+# Receive limited frames
+piradar zmq-client --frames 100
+
+# Connect to remote server
+piradar zmq-client --host 192.168.1.10 --data-port 5555
+```
+
+### Interactive Commands
+
+When using `--interactive` mode:
+
+```
+Available commands:
+  start              - Start the radar
+  stop               - Stop the radar
+  configure <file>   - Load configuration file
+  get_status         - Get current radar status
+  quit               - Exit client
+```
+
+### Python API
+
+```python
+import asyncio
+from piradar.hw import AsyncZMQClient
+
+async def run_zmq_client():
+    # Create client
+    client = AsyncZMQClient(
+        data_port=5555,
+        command_port=5556,
+        status_port=5557,
+        host="localhost"  # or IP address
+    )
+    
+    # Receive frames
+    for i in range(100):
+        frame = await client.receive_frame(timeout=5.0)
+        if frame:
+            print(f"Frame {frame.frame_id}: {frame.data.shape}")
+        else:
+            print(f"Frame {i}: Timeout")
+    
+    # Send command
+    response = await client.send_command("get_status", {})
+    if response and response.success:
+        print(f"Status: {response.data}")
+    
+    # Receive status updates
+    status = await client.receive_status(timeout=1.0)
+    if status:
+        print(f"Radar status: {status.radar_status}, FPS: {status.fps:.2f}")
+    
+    await client.close()
+
+asyncio.run(run_zmq_client())
+```
+
+## AsyncZMQHandler API
+
+### Creating a Handler
+
+```python
+from piradar.hw import AsyncZMQHandler
+
+handler = AsyncZMQHandler(
+    data_port=5555,      # Data publishing port
+    command_port=5556,   # Command handling port
+    status_port=5557,    # Status publishing port
+    bind=True            # Bind (server) or connect (client)
+)
+```
+
+### Publishing Data
+
+```python
+# Publish radar frame
+await handler.publish_frame(
+    frame_data=numpy_array,
+    metadata={
+        "frame_id": 123,
+        "timestamp": time.time(),
+        "config": {...}
+    }
+)
+
+# Publish status
+await handler.publish_status(
+    status_str="running",
+    frame_count=1000,
+    fps=10.5
+)
+
+# Publish custom message
+await handler.publish_message(
+    msg_type="custom",
+    data={"key": "value"}
+)
+```
+
+### Registering Command Handlers
+
+```python
+# Simple handler
+async def handle_start(parameters):
+    radar.start()
+    return {"status": "started", "message": "Radar started successfully"}
+
+handler.register_command_handler("start", handle_start)
+
+# Handler with parameters
+async def handle_configure(parameters):
+    config_file = parameters.get("config_file")
+    if not config_file:
+        raise ValueError("config_file parameter required")
+    
+    config = RadarConfig.read_yaml(config_file)
+    radar.configure(config)
+    return {"status": "configured", "config_file": config_file}
+
+handler.register_command_handler("configure", handle_configure)
+
+# Handler with error handling
+async def handle_write_param(parameters):
+    try:
+        param_name = parameters["parameter"]
+        param_value = parameters["value"]
+        
+        # Write parameter
+        radar.set_parameter(param_name, param_value)
+        
+        return {
+            "status": "success",
+            "parameter": param_name,
+            "value": param_value
+        }
+    except KeyError as e:
+        raise ValueError(f"Missing required parameter: {e}")
+    except Exception as e:
+        raise RuntimeError(f"Failed to write parameter: {e}")
+
+handler.register_command_handler("write_parameter", handle_write_param)
+```
+
+### Starting Command Listener
+
+```python
+# Start in background
+asyncio.create_task(handler.start_command_listener())
+
+# Or await directly
+await handler.start_command_listener()
+```
+
+## AsyncZMQClient API
+
+### Creating a Client
+
+```python
+from piradar.hw import AsyncZMQClient
+
+client = AsyncZMQClient(
+    data_port=5555,
+    command_port=5556,
+    status_port=5557,
+    host="localhost",    # Server hostname or IP
+    bind=False           # Connect (client) mode
+)
+```
+
+### Receiving Data
+
+```python
+# Receive frame with timeout
+frame = await client.receive_frame(timeout=5.0)
+if frame:
+    print(f"Frame {frame.frame_id}: {frame.data.shape}")
+    print(f"Timestamp: {frame.timestamp}")
+    print(f"Metadata: {frame.metadata}")
+else:
+    print("Timeout - no frame received")
+
+# Receive status
+status = await client.receive_status(timeout=1.0)
+if status:
+    print(f"Status: {status.radar_status}")
+    print(f"FPS: {status.fps:.2f}")
+    print(f"Frames: {status.frame_count}")
+```
+
+### Sending Commands
+
+```python
+# Simple command
+response = await client.send_command("start", {})
+if response and response.success:
+    print("Command succeeded:", response.data)
+else:
+    print("Command failed:", response.error_message if response else "Timeout")
+
+# Command with parameters
+response = await client.send_command("configure", {
+    "config_file": "radar_config.yaml"
+})
+
+# Multiple commands
+commands = [
+    ("stop", {}),
+    ("configure", {"config_file": "new_config.yaml"}),
+    ("start", {})
+]
+
+for cmd_id, params in commands:
+    response = await client.send_command(cmd_id, params)
+    print(f"{cmd_id}: {response.success if response else 'timeout'}")
+```
+
+## Advanced Usage
+
+### Concurrent Data Reception
+
+```python
+async def receive_frames(client, num_frames):
+    """Receive frames concurrently"""
+    for i in range(num_frames):
+        frame = await client.receive_frame(timeout=5.0)
+        if frame:
+            # Process frame
+            await process_frame(frame)
+
+async def receive_status(client):
+    """Continuously receive status updates"""
+    while True:
+        status = await client.receive_status(timeout=5.0)
+        if status:
+            print(f"Status: {status.radar_status}, FPS: {status.fps:.2f}")
+
+# Run concurrently
+client = AsyncZMQClient(...)
+await asyncio.gather(
+    receive_frames(client, 100),
+    receive_status(client)
+)
+```
+
+### Custom Message Types
+
+```python
+# Server side
+await handler.publish_message(
+    msg_type="detection_event",
+    data={
+        "timestamp": time.time(),
+        "target_range": 5.2,
+        "target_velocity": 1.5,
+        "confidence": 0.95
+    }
+)
+
+# Client side
+# Modify client to receive custom messages
+socket = client.context.socket(zmq.SUB)
+socket.connect(f"tcp://{client.host}:{client.data_port}")
+socket.setsockopt_string(zmq.SUBSCRIBE, "detection_event")
+
+while True:
+    message = socket.recv()
+    msg_type, data = deserialize_message(message)
+    if msg_type == "detection_event":
+        print(f"Detection: range={data['target_range']:.2f}m")
+```
+
+### Error Handling
+
+```python
+async def robust_client():
+    client = AsyncZMQClient(...)
+    
+    retry_count = 0
+    max_retries = 3
+    
+    while retry_count < max_retries:
+        try:
+            frame = await client.receive_frame(timeout=5.0)
+            if frame:
+                # Process frame
+                await process_frame(frame)
+                retry_count = 0  # Reset on success
+            else:
+                print("Timeout, retrying...")
+                retry_count += 1
+                
+        except Exception as e:
+            print(f"Error: {e}")
+            retry_count += 1
+            await asyncio.sleep(1)
+    
+    print("Max retries exceeded")
+    await client.close()
+```
+
+## Performance Considerations
+
+### Frame Rate Optimization
+
+```python
+# Server side
+async def optimized_publisher():
+    handler = AsyncZMQHandler(...)
+    
+    # Pre-allocate buffers
+    frame_buffer = []
+    
+    # Batch publish when possible
+    batch_size = 10
+    
+    with BGT60TR13C() as radar:
+        radar.start()
+        
+        while True:
+            frame = radar.frame_buffer.get(timeout=5.0)
+            frame_buffer.append(frame)
+            
+            if len(frame_buffer) >= batch_size:
+                # Publish batch
+                for f in frame_buffer:
+                    await handler.publish_frame(f, {})
+                frame_buffer.clear()
+```
+
+### Latency Reduction
+
+- **Use local connections**: Connect on localhost/127.0.0.1 for lowest latency
+- **Reduce metadata**: Minimize metadata size in frames
+- **Disable Nagle**: ZMQ disables Nagle's algorithm by default
+- **Adjust buffer sizes**: Set ZMQ buffer sizes appropriately
+
+```python
+# Set ZMQ high water mark (buffer size)
+socket.setsockopt(zmq.SNDHWM, 1000)  # Send buffer
+socket.setsockopt(zmq.RCVHWM, 1000)  # Receive buffer
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**1. Port Already in Use**
+```bash
+# Find process using port
+sudo lsof -i :5555
+
+# Kill process
+kill -9 <PID>
+```
+
+**2. Connection Refused**
+- Check server is running
+- Verify port numbers match
+- Check firewall settings
+
+**3. Timeout Errors**
+- Increase timeout values
+- Check network connection
+- Verify server is publishing
+
+### Debug Mode
+
+```bash
+# Enable ZMQ debug logging
+export ZMQ_DEBUG=1
+piradar --log-level DEBUG publish
+```
+
+## Next Steps
+
+- [Network Data Format](network-format)
+- [ZMQ Examples](examples-zmq)
+- [Adaptive Radar](adaptive-radar)
+

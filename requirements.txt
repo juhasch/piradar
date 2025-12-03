@@ -1,0 +1,25 @@
+# Core dependencies for PiRadar (always required)
+numpy
+numba
+pydantic
+pyzmq
+tqdm
+pyyaml
+h5py
+psutil
+zeroconf
+fastapi
+uvicorn
+httpx
+
+# Hardware dependencies (always required since package is used with radar hardware)
+spidev>=3.6
+gpiod>=2.0
+smbus2
+
+# Optional development dependencies
+# pytest>=7.0
+# pytest-cov>=4.0
+# black>=23.0
+# flake8>=6.0
+# mypy>=1.0

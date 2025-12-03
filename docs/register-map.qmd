@@ -1,0 +1,294 @@
+# Register Map
+
+This chapter provides an overview of the BGT60TR13C register map. For complete register details, see the auto-generated documentation from the registermap YAML file.
+
+## Overview
+
+The BGT60TR13C has 83 addressable 24-bit registers that control all aspects of the radar chip operation. These registers are accessed via SPI and provide fine-grained control over:
+
+- PLL frequency generation
+- Chirp timing and shape
+- TX/RX channel configuration
+- ADC settings
+- Power modes
+- FIFO control
+
+## Register Organization
+
+### Register Categories
+
+| Register Range | Purpose |
+|----------------|---------|
+| **0x00-0x07** | Main control, ADC, SADC, FIFO |
+| **0x08-0x0B** | Channel Set Idle (CSI) |
+| **0x0C-0x0F** | Channel Set Deep Sleep (CSDS) |
+| **0x10-0x1B** | Channel Sets Up/Down Chirp (CSU/CSD/CSC) |
+| **0x2C-0x2F** | Chirp Control Registers (CCR) |
+| **0x30-0x4F** | PLL Shapes 1-4 (frequency, ramp, timing) |
+| **0x5D-0x62** | Status registers (STAT, FSTAT, GSR) |
+
+## Key Registers
+
+### MAIN (0x00)
+
+Controls top-level behavior of the chip:
+
+- **FRAME_START**: Starts frame generation
+- **SW_RESET**: Software reset
+- **FSM_RESET**: Control FSM reset
+- **FIFO_RESET**: Clears and resets data FIFO
+
+### CHIP_ID (0x02)
+
+Read-only register containing chip identification:
+
+- **DIGITAL_ID**: 0x0003 for BGT60TR13C
+- **RF_ID**: 0x03 for 1Tx, 3Rx configuration
+
+### ADC0 (0x01)
+
+MADC control register:
+
+- **ADC_DIV**: Sampling frequency divider
+- **STC**: Sample time control
+- **TRACK_CFG**: Tracking conversion configuration
+
+### PLL Registers (0x30-0x4F)
+
+Four independent shape configurations (PLL1-4), each with 8 registers:
+
+- **PLL*_0 (FSU)**: Frequency start up
+- **PLL*_1 (RSU)**: Ramp slope up
+- **PLL*_2 (RTU)**: Ramp time up
+- **PLL*_3 (AP)**: Acquisition points
+- **PLL*_4 (FSD)**: Frequency start down
+- **PLL*_5 (RSD)**: Ramp slope down
+- **PLL*_6 (RTD)**: Ramp time down
+- **PLL*_7 (SCR)**: Shape control register
+
+## Frequency Calculation
+
+The RF frequency is calculated from register values:
+
+$$f_{RF} = 8 \times f_{SYSCLK} \times [4(N_{DIVST} + 2) + 8 + N_{FSU}/2^{20}]$$
+
+where:
+- \(f_{SYSCLK}\) = 80 MHz (typical system clock)
+- \(N_{DIVST}\) = PACR2:DIVSET field
+- \(N_{FSU}\) = PLL*_0:FSU* field (24-bit signed)
+
+## Chirp Parameter Formulas
+
+### Ramp Slope
+
+$$\Delta f_{RF} = 8 \times f_{SYSCLK} \times N_{RSU}/2^{20}$$
+
+where \(N_{RSU}\) is the PLL*_1:RSU* field.
+
+### Ramp Time
+
+$$T_{RAMP} = RTU \times 8 \times T_{SYSCLK}$$
+
+where:
+- \(RTU\) = PLL*_2:RTU* field (14-bit)
+- \(T_{SYSCLK}\) = 12.5 ns (1/80 MHz)
+
+## Accessing Registers
+
+### Python API
+
+```python
+from piradar.hw import BGT60TR13C
+from piradar.registermap import RegisterMap
+
+with BGT60TR13C() as radar:
+    # Read register
+    chip_id = radar.read_register(0x02)
+    print(f"Chip ID: 0x{chip_id:06X}")
+    
+    # Write register
+    radar.write_register(0x00, 0x1E0001)  # Start frame
+    
+    # Read register field
+    regmap = RegisterMap("piradar/bgt60tr13c_registermap.yaml")
+    value = regmap.read_field("CHIP_ID", "DIGITAL_ID")
+    print(f"Digital ID: 0x{value:04X}")
+    
+    # Write register field
+    regmap.write_field("CSI_1", "TX_DAC", 25)
+```
+
+### Adaptive Control API
+
+For AI/ML applications, use the adaptive controller:
+
+```python
+import asyncio
+from piradar.hw import AsyncZMQClient
+
+async def read_register_field():
+    client = AsyncZMQClient(command_port=5556, host="localhost")
+    
+    # Read register field
+    response = await client.send_command("read_register_field", {
+        "register": "PLL1_0",
+        "field": "FSU1"
+    })
+    
+    if response and response.success:
+        print(f"FSU1: {response.data['value']}")
+    
+    await client.close()
+
+asyncio.run(read_register_field())
+```
+
+## Common Register Operations
+
+### Enable TX and RX
+
+```python
+# Enable TX antenna and power amplifier
+regmap.write_field("CSI_0", "TX_EN", 1)
+
+# Enable RX channels
+regmap.write_field("CSI_0", "RX1MIX_EN", 1)
+regmap.write_field("CSI_0", "RX2MIX_EN", 1)
+regmap.write_field("CSI_0", "RX3MIX_EN", 1)
+```
+
+### Set TX Power
+
+```python
+# Set TX power (0-31)
+regmap.write_field("CSI_1", "TX_DAC", 25)
+```
+
+### Configure Chirp Shape
+
+```python
+# Set start frequency for shape 1
+regmap.write_field("PLL1_0", "FSU1", 0x123456)
+
+# Set ramp slope
+regmap.write_field("PLL1_1", "RSU1", 0x010000)
+
+# Set ramp time
+regmap.write_field("PLL1_2", "RTU1", 1000)
+
+# Enable shape
+regmap.write_field("PLL1_7", "SH_EN", 1)
+```
+
+## Register Map YAML
+
+The complete register map is defined in `piradar/bgt60tr13c_registermap.yaml`. This file contains:
+
+- Register addresses and names
+- Field definitions (bit positions, access, reset values)
+- Descriptions and units
+- Value enumerations
+
+### YAML Structure
+
+```yaml
+registers:
+  MAIN:
+    address: 0x00
+    width: 24
+    reset: 0x1E0000
+    description: Main register - controls top-level behavior
+    fields:
+      FRAME_START:
+        bits: 0
+        access: W1C
+        reset: 0
+        description: Start frame generation
+      # ... more fields
+```
+
+## Generating Documentation
+
+To regenerate the register map documentation:
+
+```bash
+python scripts/generate_registermap_md.py --output docs/registermap_full.md
+```
+
+This creates a detailed Markdown file with all registers and fields.
+
+## Advanced Topics
+
+### Memory Interface
+
+The register map supports memory-backed operation for simulation and testing:
+
+```python
+from piradar.registermap import RegisterMap
+
+# Create with memory interface (no hardware)
+regmap = RegisterMap("piradar/bgt60tr13c_registermap.yaml", memory_interface=True)
+
+# Read/write operations use internal memory
+regmap.write_field("CSI_1", "TX_DAC", 25)
+value = regmap.read_field("CSI_1", "TX_DAC")
+print(f"TX_DAC: {value}")
+```
+
+### Batch Operations
+
+```python
+# Read multiple registers
+registers = ["CHIP_ID", "MAIN", "ADC0"]
+values = {reg: regmap.read_register(reg) for reg in registers}
+
+# Write multiple fields
+changes = [
+    ("CSI_1", "TX_DAC", 25),
+    ("CSI_2", "VGA_GAIN1", 3),
+    ("CSI_2", "VGA_GAIN2", 3),
+]
+
+for reg, field, value in changes:
+    regmap.write_field(reg, field, value)
+```
+
+### Change Tracking
+
+```python
+# Enable change tracking
+regmap.track_changes = True
+
+# Make changes
+regmap.write_field("CSI_1", "TX_DAC", 25)
+regmap.write_field("CSI_2", "VGA_GAIN1", 3)
+
+# Get change history
+changes = regmap.get_change_history()
+for change in changes:
+    print(f"{change['register']}.{change['field']}: "
+          f"{change['old_value']} → {change['new_value']}")
+```
+
+## Complete Register Documentation
+
+For detailed documentation of all 83 registers and their fields, see the BGT60TR13C datasheet or run:
+
+```bash
+python scripts/generate_registermap_md.py --output docs/registermap_complete.md
+```
+
+This will generate comprehensive documentation including:
+
+- All register addresses and reset values
+- All field definitions with bit positions
+- Complete descriptions and usage notes
+- Value enumerations and units
+
+## See Also
+
+- [Direct Control](direct-control) - Low-level register manipulation
+- [Configuration](configuration) - High-level configuration API
+- [Adaptive Radar](adaptive-radar) - AI/ML register access
+- [Hardware Specifications](hardware-specs) - Hardware details
+

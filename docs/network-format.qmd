@@ -1,0 +1,602 @@
+# Network Data Format
+
+This chapter describes the data formats used for network communication in PiRadar.
+
+## Overview
+
+PiRadar uses a **hybrid communication architecture** combining **pyzmq** (ZeroMQ) for high-performance data streaming and **HTTP** (FastAPI) for command and control operations.
+
+### Communication Protocols
+
+- **pyzmq**: Used for one-way data streaming (radar frames and status updates) with Python's `pickle` serialization
+- **HTTP/JSON**: Used for bidirectional command/control communication via REST API
+
+### Why Pickle for ZMQ?
+
+- **Native NumPy Support**: Efficiently serializes NumPy arrays without conversion
+- **Complex Data Structures**: Handles nested dictionaries, dataclasses, and custom objects
+- **Performance**: Fast serialization/deserialization for high-frequency data streams
+- **Python Ecosystem**: Standard library, no external dependencies
+
+### Why HTTP for Commands?
+
+- **Standard Protocol**: Widely supported, easy to debug with standard tools
+- **RESTful Design**: Clear API structure with dedicated endpoints
+- **JSON Serialization**: Human-readable, language-agnostic format
+- **Better Error Handling**: Standard HTTP status codes and error responses
+
+::: {.callout-warning}
+## Security Note
+Pickle should only be used in trusted environments. For untrusted networks, consider using alternative serialization formats like Protocol Buffers or MessagePack.
+:::
+
+## Message Structure
+
+### ZMQ Message Format (Data Streaming)
+
+ZMQ messages use a simplified format with pickle serialization:
+
+```
+┌─────────────────────────────────────────┐
+│ Pickled Dictionary (variable)          │
+└─────────────────────────────────────────┘
+```
+
+The pickled dictionary contains:
+- For frames: `{"frame_id": int, "timestamp": float, "timestamp_ns": int, "data": np.ndarray, ...}`
+- For status: `{"type": "status", "data": {...}}`
+
+:::: {.callout-note}
+### Timestamp Precision
+- `timestamp` remains a floating-point Unix epoch (seconds) for backward compatibility.
+- `timestamp_ns` is an unsigned 64-bit integer representing the same event with nanosecond precision (little-endian when transported outside pickle).
+- Clients should prefer `timestamp_ns` when present and fall back to `timestamp` if missing (older servers).
+::::
+
+### HTTP Message Format (Commands)
+
+HTTP commands use JSON over REST API:
+
+**Request** (POST `/command`):
+```json
+{
+  "command_id": "string",
+  "parameters": {},
+  "timestamp": 0.0,
+  "source": "client"
+}
+```
+
+**Response**:
+```json
+{
+  "command_id": "string",
+  "timestamp": 0.0,
+  "success": true,
+  "data": {},
+  "error_message": null
+}
+```
+
+### Port Configuration
+
+| Protocol | Purpose | Port | Format |
+|----------|---------|------|--------|
+| ZMQ (pyzmq) | Radar data frames | 5555 | Pickle |
+| HTTP (FastAPI) | Commands & control | 5556 | JSON |
+| ZMQ (pyzmq) | Status updates | 5557 | Pickle |
+
+## Data Classes
+
+### RadarFrame
+
+Represents a single radar frame with all ADC samples.
+
+```python
+@dataclass
+class RadarFrame:
+    """Single radar frame data"""
+    frame_id: int                           # Sequential frame number
+    timestamp: float                        # Unix timestamp (seconds)
+    data: np.ndarray                        # Radar data array
+    timestamp_ns: int                       # Unix timestamp (nanoseconds, prefer for sync)
+    metadata: Optional[Dict[str, Any]] = None  # Additional information
+```
+
+#### Data Array Shape
+
+The `data` field is a NumPy array with shape depending on configuration:
+
+**Standard shape**: `(num_chirps, num_samples, num_channels)`
+
+**Example**: With 64 chirps, 128 samples per chirp, 3 channels:
+```python
+data.shape = (64, 128, 3)
+data.dtype = np.int16  # 16-bit signed integers
+```
+
+#### Metadata Dictionary
+
+Optional metadata may include:
+
+```python
+metadata = {
+    "config": {
+        "start_frequency_Hz": 58000000000,
+        "stop_frequency_Hz": 63000000000,
+        "chirp_duration_s": 0.0005,
+        # ... other config parameters
+    },
+    "frame_rate": 10.5,  # Measured FPS
+    "temperature": 45.2,  # Chip temperature (°C)
+    "fifo_status": "ok",  # FIFO health
+}
+```
+
+### Command (HTTP API)
+
+Commands are sent via HTTP POST to `/command` endpoint.
+
+#### HTTP Request Format
+
+```python
+# Pydantic model (server-side)
+class CommandRequest(BaseModel):
+    command_id: str
+    parameters: Dict[str, Any] = {}
+    timestamp: float = 0.0
+    source: str = "client"
+```
+
+#### Available Commands
+
+| Command ID | Parameters | Description |
+|------------|------------|-------------|
+| `start` | None | Start radar data collection |
+| `stop` | None | Stop radar data collection |
+| `get_status` | None | Request current status |
+| `keep_alive` | None | Reset watchdog timer |
+| `read_parameter` | `{"parameter": str}` | Read register parameter |
+| `write_parameter` | `{"parameter": str, "value": Any}` | Write register parameter |
+| `batch_write` | `{"changes": Dict[str, Any]}` | Write multiple parameters |
+| `list_parameters` | `{"category": str}` | List available parameters |
+| `get_parameter_info` | `{"parameter": str}` | Get parameter metadata |
+| `get_parameter_state` | None | Get full parameter state |
+| `read_register_field` | `{"register": str, "field": str}` | Read register field |
+| `write_register_field` | `{"register": str, "field": str, "value": int}` | Write register field |
+
+#### Example Command (HTTP)
+
+```python
+import httpx
+
+# Using HttpClient
+client = HttpClient(host="localhost", port=5556)
+response = client.send_command(
+    command_id="write_parameter",
+    parameters={
+        "parameter": "output_power",
+        "value": 25
+    }
+)
+
+# Direct HTTP request
+import requests
+response = requests.post(
+    "http://localhost:5556/command",
+    json={
+        "command_id": "write_parameter",
+        "parameters": {"parameter": "output_power", "value": 25},
+        "timestamp": time.time(),
+        "source": "client"
+    }
+)
+```
+
+### Response (HTTP API)
+
+Server responses are returned as JSON in HTTP response body.
+
+#### HTTP Response Format
+
+```python
+# Pydantic model (server-side)
+class CommandResponse(BaseModel):
+    command_id: str
+    timestamp: float
+    success: bool
+    data: Optional[Any] = None
+    error_message: Optional[str] = None
+```
+
+#### Example Responses
+
+**Success response**:
+```json
+{
+  "command_id": "write_parameter",
+  "timestamp": 1703123456.789,
+  "success": true,
+  "data": {
+    "parameter": "output_power",
+    "value": 25,
+    "success": true
+  },
+  "error_message": null
+}
+```
+
+**Error response**:
+```json
+{
+  "command_id": "write_parameter",
+  "timestamp": 1703123456.789,
+  "success": false,
+  "data": null,
+  "error_message": "Invalid parameter name: output_powerr"
+}
+```
+
+**HTTP Status Codes**:
+- `200 OK`: Command processed (check `success` field for actual result)
+- `400 Bad Request`: Invalid request format
+- `503 Service Unavailable`: Radar not initialized
+- `500 Internal Server Error`: Server error during processing
+
+### Status
+
+Periodic status updates from server.
+
+```python
+@dataclass
+class Status:
+    """Status update message"""
+    timestamp: float                        # Unix timestamp
+    radar_status: str                       # Current state
+    frame_count: int                        # Total frames collected
+    fps: float                              # Current frame rate
+    uptime: float                           # Server uptime (seconds)
+    memory_usage: Optional[float] = None    # MB used (optional)
+```
+
+#### Radar Status Values
+
+| Status | Description |
+|--------|-------------|
+| `initializing` | Starting up |
+| `idle` | Ready but not collecting |
+| `running` | Actively collecting data |
+| `paused` | Temporarily stopped |
+| `error` | Error state |
+| `shutdown` | Shutting down |
+
+#### Example Status
+
+```python
+status = Status(
+    timestamp=time.time(),
+    radar_status="running",
+    frame_count=1523,
+    fps=10.2,
+    uptime=149.3,
+    memory_usage=45.2
+)
+```
+
+## Wire Format Details
+
+### ZMQ Serialization Process (Data Streaming)
+
+**Sender side** (pyzmq):
+
+1. Create message dictionary
+2. Serialize with pickle: `data = pickle.dumps(message_dict)`
+3. Send via ZMQ PUB socket: `socket.send(serialized)`
+
+**Receiver side** (pyzmq):
+
+1. Receive message: `message = socket.recv()`
+2. Deserialize: `data = pickle.loads(message)`
+3. Extract frame/status data from dictionary
+
+### Example ZMQ Serialization Code
+
+```python
+import pickle
+import zmq
+import numpy as np
+
+# Publisher side
+def publish_frame(socket, frame_data: np.ndarray, frame_id: int):
+    """Publish a radar frame via ZMQ"""
+    timestamp_ns = time.time_ns()
+    message = {
+        "frame_id": frame_id,
+        "timestamp": timestamp_ns / 1e9,
+        "timestamp_ns": timestamp_ns,
+        "data": frame_data
+    }
+    serialized = pickle.dumps(message)
+    socket.send(serialized)
+
+# Subscriber side
+def receive_frame(socket):
+    """Receive a radar frame from ZMQ"""
+    message = socket.recv()
+    data = pickle.loads(message)
+    return data["frame_id"], data["timestamp_ns"], data["data"]
+```
+
+### HTTP Serialization Process (Commands)
+
+**Client side**:
+
+1. Create command dictionary
+2. Serialize as JSON: `json_data = json.dumps(command_dict)`
+3. Send HTTP POST: `requests.post(url, json=command_dict)`
+
+**Server side**:
+
+1. Receive HTTP request
+2. Parse JSON body: `command = CommandRequest(**request.json())`
+3. Process command
+4. Return JSON response: `return CommandResponse(...)`
+
+### Example HTTP Client Code
+
+```python
+import httpx
+import json
+
+# Using HttpClient wrapper
+from piradar.client.communication import HttpClient
+
+client = HttpClient(host="localhost", port=5556)
+response = client.send_command("start", {})
+print(response)  # {"command_id": "start", "success": True, ...}
+
+# Direct HTTP request
+import httpx
+with httpx.Client() as client:
+    response = client.post(
+        "http://localhost:5556/command",
+        json={
+            "command_id": "get_status",
+            "parameters": {},
+            "timestamp": time.time(),
+            "source": "client"
+        }
+    )
+    status = response.json()
+```
+
+## Data Size Calculations
+
+### Frame Size Example
+
+For a typical configuration:
+
+- **Chirps per frame**: 64
+- **Samples per chirp**: 128
+- **Channels**: 3
+- **Bits per sample**: 16 (int16)
+
+**Raw data size**:
+```
+64 chirps × 128 samples × 3 channels × 2 bytes = 49,152 bytes ≈ 48 KB
+```
+
+**With overhead** (metadata, pickle, ZMQ):
+```
+48 KB + ~2 KB overhead ≈ 50 KB per frame (ZMQ)
+```
+
+### Throughput Calculation
+
+At 10 frames per second:
+```
+50 KB/frame × 10 fps = 500 KB/s ≈ 0.5 MB/s
+```
+
+At 100 frames per second:
+```
+50 KB/frame × 100 fps = 5 MB/s
+```
+
+### Network Requirements
+
+| Frame Rate | Bandwidth | Network Type |
+|------------|-----------|--------------|
+| 1 FPS | 50 KB/s | Any |
+| 10 FPS | 500 KB/s | WiFi, Ethernet |
+| 50 FPS | 2.5 MB/s | Fast WiFi, Ethernet |
+| 100 FPS | 5 MB/s | Gigabit Ethernet |
+
+## NumPy Array Serialization
+
+Pickle efficiently handles NumPy arrays by storing:
+
+1. **Array metadata**: dtype, shape, strides
+2. **Raw data buffer**: Memory-mapped when possible
+3. **Compression**: Optional with `pickle.HIGHEST_PROTOCOL`
+
+### Optimizing NumPy Serialization
+
+```python
+# Use highest protocol for better compression
+pickled = pickle.dumps(frame, protocol=pickle.HIGHEST_PROTOCOL)
+
+# For large arrays, consider compression
+import zlib
+compressed = zlib.compress(pickled)
+
+# On receiver side
+decompressed = zlib.decompress(compressed)
+frame = pickle.loads(decompressed)
+```
+
+## Alternative Formats
+
+### Current Architecture
+
+- **ZMQ Data Streaming**: Uses pickle for efficient NumPy array serialization
+- **HTTP Commands**: Uses JSON for human-readable, language-agnostic communication
+
+### Future Alternatives for ZMQ Data
+
+While pickle is the current default for ZMQ data streaming, PiRadar could be extended to support:
+
+#### MessagePack
+
+```python
+import msgpack
+import msgpack_numpy as m
+
+# Configure msgpack to handle NumPy
+m.patch()
+
+# Serialize
+packed = msgpack.packb({"frame": frame_data})
+
+# Deserialize
+unpacked = msgpack.unpackb(packed)
+```
+
+#### Protocol Buffers
+
+For cross-language compatibility and strict schemas.
+
+#### Raw Binary
+
+For maximum performance with fixed formats:
+
+```python
+# Fixed header + raw numpy bytes
+header = struct.pack('!IIIIQQ', 
+    frame_id, num_chirps, num_samples, num_channels,
+    timestamp_int, metadata_length
+)
+data_bytes = frame_data.tobytes()
+metadata_bytes = json.dumps(metadata).encode('utf-8')
+
+message = header + metadata_bytes + data_bytes
+```
+
+### HTTP API Extensions
+
+The HTTP API can be extended with:
+- **OpenAPI/Swagger**: Auto-generated API documentation (FastAPI provides this)
+- **WebSocket**: For real-time bidirectional communication
+- **GraphQL**: For flexible querying of radar state
+
+## Best Practices
+
+### For ZMQ Data Streaming
+
+**Senders**:
+1. **Use async operations**: Leverage `zmq.asyncio` for non-blocking sends
+2. **Use high protocol**: `pickle.HIGHEST_PROTOCOL` for better compression
+3. **Minimize metadata**: Only include necessary information in frames
+4. **Consider compression**: For low-bandwidth networks (zlib)
+
+**Receivers**:
+1. **Set timeouts**: Always use timeouts to prevent hanging
+2. **Handle errors**: Gracefully handle deserialization failures
+3. **Buffer management**: Pre-allocate buffers for known sizes
+4. **Process async**: Use async/await for non-blocking reception
+
+### For HTTP Commands
+
+**Clients**:
+1. **Use connection pooling**: Reuse HTTP client instances
+2. **Set appropriate timeouts**: Default 2 seconds is usually sufficient
+3. **Handle HTTP errors**: Check status codes and response `success` field
+4. **Retry logic**: Implement retries for transient failures
+
+**Servers**:
+1. **Validate input**: Use Pydantic models for request validation
+2. **Return clear errors**: Provide descriptive error messages
+3. **Use proper status codes**: Follow HTTP conventions
+4. **Log commands**: Track command execution for debugging
+
+### Error Handling
+
+#### ZMQ Error Handling
+
+```python
+import pickle
+import zmq
+
+def safe_receive_frame(socket, timeout_ms=1000):
+    """Safely receive and deserialize a ZMQ message"""
+    try:
+        # Set timeout
+        socket.setsockopt(zmq.RCVTIMEO, timeout_ms)
+        
+        # Receive message
+        message = socket.recv()
+        
+        # Deserialize
+        data = pickle.loads(message)
+        
+        return data
+        
+    except zmq.Again:
+        # Timeout
+        return None
+        
+    except pickle.UnpicklingError as e:
+        # Deserialization failed
+        print(f"Failed to deserialize: {e}")
+        return None
+        
+    except Exception as e:
+        # Other errors
+        print(f"Receive error: {e}")
+        return None
+```
+
+#### HTTP Error Handling
+
+```python
+import httpx
+
+def safe_send_command(client: httpx.Client, command_id: str, parameters: dict = None):
+    """Safely send HTTP command with error handling"""
+    try:
+        response = client.post(
+            "/command",
+            json={
+                "command_id": command_id,
+                "parameters": parameters or {},
+                "timestamp": time.time(),
+                "source": "client"
+            },
+            timeout=2.0
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"HTTP Error {response.status_code}: {response.text}")
+            return None
+            
+    except httpx.TimeoutException:
+        print("Request timeout")
+        return None
+        
+    except httpx.RequestError as e:
+        print(f"Request failed: {e}")
+        return None
+        
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return None
+```
+
+## Next Steps
+
+- [ZeroMQ Communication](zmq-communication)
+- [ZMQ Examples](examples-zmq)
+- [Python API Reference](python-api)
+

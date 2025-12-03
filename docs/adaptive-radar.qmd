@@ -1,0 +1,303 @@
+# Adaptive Radar Operation
+
+The adaptive radar system provides direct access to radar parameters through a ZMQ backchannel, enabling AI systems to learn and optimize radar behavior in real-time.
+
+## Philosophy: Direct Register Map Access for AI Learning
+
+The key design principle is **direct register map access** - we use the actual hardware register map (`registermap.yaml`) rather than abstractions. This allows AI systems to:
+
+- **Learn the relationship** between register values and radar behavior
+- **Discover unexpected parameter combinations** that might improve performance
+- **Optimize performance** through direct experimentation
+- **Understand the underlying hardware behavior** at the register level
+- **Access any register field** defined in the hardware specification
+
+## Architecture Overview
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   AI Client     │    │  ZMQ Backchannel │    │  Radar Hardware │
+│                 │◄──►│                  │◄──►│                 │
+│ • Parameter     │    │ • Command/Reply  │    │ • Registers     │
+│   Control       │    │ • Data Streaming │    │ • Real-time     │
+│ • Optimization  │    │ • Status Updates │    │   Updates       │
+│ • Learning      │    │ • Parameter      │    │ • Performance   │
+└─────────────────┘    │   Control        │    │   Monitoring    │
+                       └──────────────────┘    └─────────────────┘
+```
+
+## Key Components
+
+### 1. AdaptiveRadarController
+
+Direct interface to radar parameters through register manipulation:
+
+- **Parameter Definitions**: Maps human-readable names to actual register map fields
+- **Direct Register Access**: Read/write operations using the hardware register map
+- **Change Tracking**: Complete history of parameter modifications
+- **Performance Monitoring**: Real-time metrics for optimization
+- **Register Map Integration**: Full access to all registers defined in `registermap.yaml`
+
+### 2. ZMQ Backchannel
+
+Bidirectional communication for parameter control:
+
+- **Command Interface**: Direct parameter read/write commands
+- **Batch Operations**: Multiple parameter changes in single transaction
+- **State Export/Import**: Complete parameter state for AI analysis
+- **Performance Metrics**: Real-time monitoring and optimization feedback
+
+## Parameter Control Commands
+
+### Basic Operations
+
+```python
+# Read a parameter
+response = await client.send_command("read_parameter", {
+    "parameter": "start_frequency"
+})
+
+# Write a parameter
+response = await client.send_command("write_parameter", {
+    "parameter": "start_frequency",
+    "value": 57500000000,
+    "source": "ai_optimization"
+})
+
+# Batch write multiple parameters
+response = await client.send_command("batch_write", {
+    "changes": {
+        "start_frequency": 57500000000,
+        "end_frequency": 61940000000,
+        "chirp_duration": 800
+    },
+    "source": "ai_batch_optimization"
+})
+```
+
+### Direct Register Access
+
+```python
+# List all available registers and fields
+response = await client.send_command("list_all_registers", {})
+
+# Read any register field directly
+response = await client.send_command("read_register_field", {
+    "register": "PLL1_0",
+    "field": "FSU1"
+})
+
+# Write any register field directly
+response = await client.send_command("write_register_field", {
+    "register": "CSI_0",
+    "field": "TX_EN",
+    "value": 1,
+    "source": "ai_learning"
+})
+```
+
+### System Control
+
+```python
+# Get parameter information
+response = await client.send_command("get_parameter_info", {
+    "parameter": "freq_start_up1"
+})
+
+# List available parameters
+response = await client.send_command("list_parameters", {
+    "category": "frequency"  # Optional category filter
+})
+
+# Get current parameter state for AI analysis
+response = await client.send_command("get_parameter_state", {})
+
+# Import parameter state from AI analysis
+response = await client.send_command("import_parameter_state", {
+    "state": ai_optimized_state
+})
+
+# Get performance metrics
+response = await client.send_command("get_performance", {})
+```
+
+## Usage Examples
+
+### Starting the Adaptive Server
+
+```bash
+# Hardware mode (requires Dreamhat)
+piradar adaptive-server
+
+# Synthetic mode (for testing without hardware)
+piradar adaptive-server --synthetic
+```
+
+### Running the Demo
+
+```bash
+# Terminal 1: Start adaptive server
+piradar adaptive-server --synthetic
+
+# Terminal 2: Run adaptive client demo
+python examples/adaptive_radar_demo.py
+```
+
+### Register Map Direct Access Demo
+
+```bash
+# Terminal 1: Start adaptive server
+piradar adaptive-server --synthetic
+
+# Terminal 2: Run register map demo
+python examples/register_map_demo.py
+```
+
+## AI Learning Scenarios
+
+### Bandwidth Optimization
+
+```python
+# AI learns that increasing bandwidth improves resolution
+current_bandwidth = end_freq - start_freq
+if current_bandwidth < target_bandwidth:
+    new_start = start_freq - expansion
+    new_end = end_freq + expansion
+    
+    await client.send_command("batch_write", {
+        "changes": {
+            "start_frequency": new_start,
+            "end_frequency": new_end
+        },
+        "source": "ai_bandwidth_optimization"
+    })
+```
+
+### Power-Performance Trade-off
+
+```python
+# AI learns optimal power levels for different scenarios
+if signal_quality < threshold and tx_power < max_power:
+    new_power = min(max_power, tx_power + power_step)
+    
+    await client.send_command("write_parameter", {
+        "parameter": "tx_power",
+        "value": new_power,
+        "source": "ai_power_optimization"
+    })
+```
+
+## Performance Monitoring
+
+The adaptive controller tracks:
+
+- **Frame Rate**: Current frames per second
+- **Parameter Changes**: Total modifications made
+- **Change History**: Complete tracking of all parameter modifications
+- **Signal Quality**: Measured signal performance
+
+## Benefits for AI Learning
+
+1. **Direct Hardware Access**: No abstraction layers hiding hardware behavior
+2. **Comprehensive Monitoring**: Complete change history for learning
+3. **Flexible Control**: Individual or batch parameter operations
+4. **Real-time Feedback**: Immediate correlation between changes and results
+
+## Complete Example
+
+Here's a complete example of an AI optimization loop:
+
+```python
+import asyncio
+import numpy as np
+from piradar.hw import AsyncZMQClient
+
+class RadarOptimizer:
+    def __init__(self, host="localhost"):
+        self.client = AsyncZMQClient(
+            data_port=5555,
+            command_port=5556,
+            host=host
+        )
+        self.history = []
+    
+    async def evaluate_performance(self):
+        """Collect frames and compute performance metric"""
+        frames = []
+        for _ in range(10):
+            frame = await self.client.receive_frame(timeout=5.0)
+            if frame:
+                frames.append(frame.data)
+        
+        if not frames:
+            return -np.inf
+        
+        # Compute SNR as performance metric
+        avg_frame = np.mean(frames, axis=0)
+        signal = np.abs(np.fft.fft(avg_frame, axis=1)).max()
+        noise = np.abs(np.fft.fft(avg_frame, axis=1)).std()
+        return signal / (noise + 1e-10)
+    
+    async def optimize_parameter(self, param_name, value_range):
+        """Optimize a single parameter"""
+        best_value = None
+        best_performance = -np.inf
+        
+        for value in value_range:
+            # Set parameter
+            response = await self.client.send_command("write_parameter", {
+                "parameter": param_name,
+                "value": value,
+                "source": "optimizer"
+            })
+            
+            if not response or not response.success:
+                continue
+            
+            # Wait for radar to stabilize
+            await asyncio.sleep(0.5)
+            
+            # Evaluate
+            performance = await self.evaluate_performance()
+            
+            print(f"{param_name}={value}: performance={performance:.2f}")
+            
+            # Track best
+            if performance > best_performance:
+                best_performance = performance
+                best_value = value
+                self.history.append({
+                    "parameter": param_name,
+                    "value": value,
+                    "performance": performance
+                })
+        
+        return best_value, best_performance
+    
+    async def optimize(self):
+        """Run optimization"""
+        print("Starting radar optimization...")
+        
+        # Optimize TX power
+        power_range = range(20, 32, 2)
+        best_power, power_perf = await self.optimize_parameter(
+            "tx_power",
+            power_range
+        )
+        
+        print(f"\nBest TX power: {best_power} (performance: {power_perf:.2f})")
+        
+        await self.client.close()
+
+if __name__ == "__main__":
+    optimizer = RadarOptimizer()
+    asyncio.run(optimizer.optimize())
+```
+
+## See Also
+
+- [Adaptive Examples](examples-adaptive) - Practical examples
+- [Register Map](register-map) - Complete register reference
+- [ZeroMQ Guide](zmq-communication) - Network communication details
+- [Python API](python-api) - API reference
+

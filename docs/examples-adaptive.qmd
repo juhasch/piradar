@@ -1,0 +1,581 @@
+# Adaptive Radar Examples
+
+Examples demonstrating adaptive parameter control and AI/ML integration.
+
+## Overview
+
+The adaptive radar system allows real-time control of radar parameters through a ZMQ backchannel, enabling AI systems to learn and optimize radar behavior dynamically.
+
+## Basic Parameter Control
+
+### Reading Parameters
+
+```python
+#!/usr/bin/env python3
+"""Read radar parameters"""
+
+import asyncio
+from piradar.hw import AsyncZMQClient
+
+async def read_parameters():
+    client = AsyncZMQClient(
+        data_port=5555,
+        command_port=5556,
+        host="localhost"
+    )
+    
+    # Read single parameter
+    response = await client.send_command("read_parameter", {
+        "parameter": "start_frequency"
+    })
+    
+    if response and response.success:
+        print(f"Start Frequency: {response.data['value']} Hz")
+    
+    # List all parameters
+    response = await client.send_command("list_parameters", {})
+    if response and response.success:
+        print(f"Available parameters: {len(response.data['parameters'])}")
+        for param in response.data['parameters'][:5]:
+            print(f"  - {param}")
+    
+    await client.close()
+
+if __name__ == "__main__":
+    asyncio.run(read_parameters())
+```
+
+### Writing Parameters
+
+```python
+#!/usr/bin/env python3
+"""Write radar parameters"""
+
+import asyncio
+from piradar.hw import AsyncZMQClient
+
+async def write_parameters():
+    client = AsyncZMQClient(
+        data_port=5555,
+        command_port=5556,
+        host="localhost"
+    )
+    
+    # Write single parameter
+    response = await client.send_command("write_parameter", {
+        "parameter": "tx_power",
+        "value": 25,
+        "source": "manual_control"
+    })
+    
+    if response and response.success:
+        old_val = response.data.get('old_value')
+        new_val = response.data.get('value')
+        print(f"TX Power changed: {old_val} → {new_val}")
+    
+    # Batch write
+    response = await client.send_command("batch_write", {
+        "changes": {
+            "start_frequency": 58500000000,
+            "end_frequency": 62500000000,
+            "chirp_duration": 600
+        },
+        "source": "batch_optimization"
+    })
+    
+    if response and response.success:
+        print(f"Batch write successful: {response.data['num_changes']} parameters updated")
+    
+    await client.close()
+
+if __name__ == "__main__":
+    asyncio.run(write_parameters())
+```
+
+## Register Map Access
+
+### Direct Register Access
+
+```python
+#!/usr/bin/env python3
+"""Direct register field access"""
+
+import asyncio
+from piradar.hw import AsyncZMQClient
+
+async def register_access():
+    client = AsyncZMQClient(
+        data_port=5555,
+        command_port=5556,
+        host="localhost"
+    )
+    
+    # List all registers
+    response = await client.send_command("list_all_registers", {})
+    if response and response.success:
+        registers = response.data['registers']
+        print(f"Total registers: {len(registers)}")
+        print(f"First 5 registers:")
+        for reg in list(registers.keys())[:5]:
+            print(f"  - {reg}")
+    
+    # Read register field
+    response = await client.send_command("read_register_field", {
+        "register": "PLL1_0",
+        "field": "FSU1"
+    })
+    
+    if response and response.success:
+        print(f"\nFSU1 value: {response.data['value']}")
+        print(f"Description: {response.data.get('description', 'N/A')}")
+    
+    # Write register field
+    response = await client.send_command("write_register_field", {
+        "register": "CSI_1",
+        "field": "TX_DAC",
+        "value": 20,
+        "source": "optimization"
+    })
+    
+    if response and response.success:
+        print(f"\nTX_DAC updated: {response.data['old_value']} → {response.data['value']}")
+    
+    await client.close()
+
+if __name__ == "__main__":
+    asyncio.run(register_access())
+```
+
+## AI Optimization Examples
+
+### Simple Grid Search
+
+```python
+#!/usr/bin/env python3
+"""Grid search optimization for radar parameters"""
+
+import asyncio
+import numpy as np
+from piradar.hw import AsyncZMQClient
+
+class GridSearchOptimizer:
+    def __init__(self, host="localhost"):
+        self.client = AsyncZMQClient(
+            data_port=5555,
+            command_port=5556,
+            host=host
+        )
+        self.best_config = None
+        self.best_score = -np.inf
+    
+    async def evaluate_config(self, config):
+        """Evaluate a configuration"""
+        # Write parameters
+        response = await self.client.send_command("batch_write", {
+            "changes": config,
+            "source": "grid_search"
+        })
+        
+        if not response or not response.success:
+            return -np.inf
+        
+        # Wait for radar to stabilize
+        await asyncio.sleep(0.5)
+        
+        # Collect frames and compute score
+        frames = []
+        for _ in range(10):
+            frame = await self.client.receive_frame(timeout=5.0)
+            if frame:
+                frames.append(frame.data)
+        
+        if not frames:
+            return -np.inf
+        
+        # Simple score: signal-to-noise ratio
+        avg_frame = np.mean(frames, axis=0)
+        signal = np.abs(np.fft.fft(avg_frame, axis=1)).max()
+        noise = np.abs(np.fft.fft(avg_frame, axis=1)).std()
+        snr = signal / (noise + 1e-10)
+        
+        return snr
+    
+    async def optimize(self, param_grid):
+        """Run grid search optimization"""
+        print("Starting grid search optimization...")
+        
+        # Generate configurations
+        configs = self._generate_configs(param_grid)
+        
+        print(f"Testing {len(configs)} configurations...")
+        
+        for i, config in enumerate(configs):
+            score = await self.evaluate_config(config)
+            
+            print(f"Config {i+1}/{len(configs)}: score={score:.2f}")
+            
+            if score > self.best_score:
+                self.best_score = score
+                self.best_config = config
+                print(f"  → New best configuration! (score={score:.2f})")
+        
+        print(f"\nBest configuration (score={self.best_score:.2f}):")
+        for key, value in self.best_config.items():
+            print(f"  {key}: {value}")
+        
+        await self.client.close()
+    
+    def _generate_configs(self, param_grid):
+        """Generate all parameter combinations"""
+        keys = list(param_grid.keys())
+        values = [param_grid[k] for k in keys]
+        
+        configs = []
+        for combo in itertools.product(*values):
+            config = dict(zip(keys, combo))
+            configs.append(config)
+        
+        return configs
+
+async def main():
+    # Define search space
+    param_grid = {
+        "tx_power": [20, 25, 31],
+        "chirp_duration": [400, 500, 600],
+    }
+    
+    optimizer = GridSearchOptimizer()
+    await optimizer.optimize(param_grid)
+
+if __name__ == "__main__":
+    import itertools
+    asyncio.run(main())
+```
+
+### Reinforcement Learning Agent
+
+```python
+#!/usr/bin/env python3
+"""Simple RL agent for radar parameter optimization"""
+
+import asyncio
+import numpy as np
+from piradar.hw import AsyncZMQClient
+
+class SimpleRLAgent:
+    def __init__(self, host="localhost", learning_rate=0.1, epsilon=0.2):
+        self.client = AsyncZMQClient(
+            data_port=5555,
+            command_port=5556,
+            host=host
+        )
+        self.learning_rate = learning_rate
+        self.epsilon = epsilon
+        
+        # Simple action space: adjust TX power
+        self.actions = [-5, -2, 0, +2, +5]  # Power adjustments
+        
+        # State: current TX power
+        self.current_power = 31
+        
+        # Q-table (simplified)
+        self.q_table = np.zeros((32, len(self.actions)))  # 32 power levels
+    
+    async def get_reward(self):
+        """Compute reward based on radar performance"""
+        # Collect few frames
+        frames = []
+        for _ in range(5):
+            frame = await self.client.receive_frame(timeout=5.0)
+            if frame:
+                frames.append(frame.data)
+        
+        if not frames:
+            return -10.0  # Penalty for no data
+        
+        # Compute SNR as reward
+        avg_frame = np.mean(frames, axis=0)
+        signal = np.abs(np.fft.fft(avg_frame, axis=1)).max()
+        noise = np.abs(np.fft.fft(avg_frame, axis=1)).std()
+        snr = signal / (noise + 1e-10)
+        
+        return snr
+    
+    async def take_action(self, action_idx):
+        """Execute an action"""
+        power_delta = self.actions[action_idx]
+        new_power = np.clip(self.current_power + power_delta, 0, 31)
+        
+        # Apply action
+        response = await self.client.send_command("write_parameter", {
+            "parameter": "tx_power",
+            "value": new_power,
+            "source": "rl_agent"
+        })
+        
+        if response and response.success:
+            self.current_power = new_power
+            return True
+        
+        return False
+    
+    def choose_action(self):
+        """Epsilon-greedy action selection"""
+        if np.random.random() < self.epsilon:
+            # Explore
+            return np.random.randint(len(self.actions))
+        else:
+            # Exploit
+            state = self.current_power
+            return np.argmax(self.q_table[state])
+    
+    def update_q_value(self, state, action, reward, next_state):
+        """Update Q-table"""
+        current_q = self.q_table[state, action]
+        max_next_q = np.max(self.q_table[next_state])
+        
+        new_q = current_q + self.learning_rate * (
+            reward + 0.9 * max_next_q - current_q
+        )
+        
+        self.q_table[state, action] = new_q
+    
+    async def train(self, num_episodes=50):
+        """Train the agent"""
+        print("Training RL agent...")
+        
+        for episode in range(num_episodes):
+            # Get current state
+            state = self.current_power
+            
+            # Choose action
+            action = self.choose_action()
+            
+            # Take action
+            success = await self.take_action(action)
+            
+            if not success:
+                print(f"Episode {episode}: Action failed")
+                continue
+            
+            # Wait for radar to stabilize
+            await asyncio.sleep(0.5)
+            
+            # Get reward
+            reward = await self.get_reward()
+            
+            # Get next state
+            next_state = self.current_power
+            
+            # Update Q-table
+            self.update_q_value(state, action, reward, next_state)
+            
+            print(f"Episode {episode}: "
+                  f"power={self.current_power}, "
+                  f"action={self.actions[action]:+d}, "
+                  f"reward={reward:.2f}")
+        
+        print("\nTraining complete!")
+        print(f"Final power: {self.current_power}")
+        
+        await self.client.close()
+
+if __name__ == "__main__":
+    agent = SimpleRLAgent()
+    asyncio.run(agent.train())
+```
+
+### Bayesian Optimization
+
+```python
+#!/usr/bin/env python3
+"""Bayesian optimization for radar parameters"""
+
+import asyncio
+import numpy as np
+from piradar.hw import AsyncZMQClient
+
+class BayesianOptimizer:
+    """Simplified Bayesian optimization"""
+    
+    def __init__(self, host="localhost"):
+        self.client = AsyncZMQClient(
+            data_port=5555,
+            command_port=5556,
+            host=host
+        )
+        self.observations = []
+    
+    async def objective_function(self, params):
+        """Evaluate parameter configuration"""
+        # Apply parameters
+        response = await self.client.send_command("batch_write", {
+            "changes": params,
+            "source": "bayesian_opt"
+        })
+        
+        if not response or not response.success:
+            return -np.inf
+        
+        await asyncio.sleep(0.5)
+        
+        # Collect frames
+        frames = []
+        for _ in range(10):
+            frame = await self.client.receive_frame(timeout=5.0)
+            if frame:
+                frames.append(frame.data)
+        
+        if not frames:
+            return -np.inf
+        
+        # Compute objective (SNR)
+        avg_frame = np.mean(frames, axis=0)
+        range_fft = np.abs(np.fft.fft(avg_frame, axis=1))
+        signal = range_fft.max()
+        noise = range_fft.std()
+        
+        return signal / (noise + 1e-10)
+    
+    def suggest_next(self, bounds, n_samples=5):
+        """Suggest next parameters to try"""
+        # Simple random search for demonstration
+        # In practice, use proper acquisition function
+        
+        suggestions = []
+        for _ in range(n_samples):
+            params = {}
+            for key, (low, high) in bounds.items():
+                params[key] = np.random.uniform(low, high)
+            suggestions.append(params)
+        
+        return suggestions
+    
+    async def optimize(self, bounds, n_iterations=20):
+        """Run Bayesian optimization"""
+        print("Starting Bayesian optimization...")
+        
+        best_value = -np.inf
+        best_params = None
+        
+        for iteration in range(n_iterations):
+            # Get suggestions
+            suggestions = self.suggest_next(bounds, n_samples=3)
+            
+            # Evaluate each
+            for params in suggestions:
+                value = await self.objective_function(params)
+                
+                self.observations.append((params, value))
+                
+                print(f"Iteration {iteration+1}, "
+                      f"params={params}, "
+                      f"value={value:.2f}")
+                
+                if value > best_value:
+                    best_value = value
+                    best_params = params
+                    print(f"  → New best! (value={value:.2f})")
+        
+        print(f"\nOptimization complete!")
+        print(f"Best value: {best_value:.2f}")
+        print(f"Best parameters:")
+        for key, value in best_params.items():
+            print(f"  {key}: {value}")
+        
+        await self.client.close()
+
+async def main():
+    # Define parameter bounds
+    bounds = {
+        "tx_power": (15, 31),
+        "chirp_duration": (300, 800),
+    }
+    
+    optimizer = BayesianOptimizer()
+    await optimizer.optimize(bounds, n_iterations=20)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Using the RL Environment
+
+PiRadar includes a Gym-like reinforcement learning environment:
+
+```python
+#!/usr/bin/env python3
+"""Using the RadarRLEnv"""
+
+import numpy as np
+from piradar.rl_env import RadarRLEnv
+
+# Create environment
+env = RadarRLEnv(
+    host="localhost",
+    data_port=5555,
+    command_port=5556
+)
+
+# Reset environment
+observation = env.reset()
+print(f"Initial observation: {observation}")
+
+# Run episode
+total_reward = 0
+done = False
+
+for step in range(100):
+    # Random action (replace with your policy)
+    action = env.action_space.sample()
+    
+    # Step environment
+    observation, reward, done, info = env.step(action)
+    
+    total_reward += reward
+    
+    print(f"Step {step}: reward={reward:.2f}, done={done}")
+    
+    if done:
+        break
+
+print(f"Episode complete. Total reward: {total_reward:.2f}")
+
+# Close environment
+env.close()
+```
+
+## Starting Adaptive Server
+
+### Command Line
+
+```bash
+# Hardware mode (requires Dreamhat)
+piradar adaptive-server
+
+# Synthetic mode (for testing without hardware)
+piradar adaptive-server --synthetic
+
+# Custom configuration
+piradar adaptive-server --config radar_config.yaml
+
+# Custom ports
+piradar adaptive-server --port 6000
+```
+
+### Running the Demo
+
+```bash
+# Terminal 1: Start server
+piradar adaptive-server --synthetic
+
+# Terminal 2: Run optimization
+python examples/adaptive_radar_demo.py
+```
+
+## Next Steps
+
+- [Adaptive Radar](adaptive-radar) - Detailed architecture
+- [Register Map](register-map) - Complete register reference
+- [Python API](python-api) - API documentation
+
