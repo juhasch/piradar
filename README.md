@@ -4,12 +4,11 @@ A high-performance Python driver for the [Dreamhat](https://shop.pimoroni.com/pr
 
 ![Dreamhat Radar Hardware](dreamhat.png)
 
+## Example
 
 [![Range measurement](range_measurement.png)](https://mmwaves.de/blogs/dreamhat/videos/range.mp4)
-[![Demo Video](range_measurement)](http://mmwaves.de/blogs/dreamhat/videos/range.mp4)
 
 For more demos see https://mmwaves.de/blogs/dreamhat/
-
 
 ## Features
 
